@@ -151,12 +151,15 @@ async function sendOrderEmail(orderId: string, paymentMethod: string, amount: nu
 
   try {
     const transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      family: 4,
       auth: {
         user: emailUser,
         pass: emailPass,
       },
-    });
+    } as any);
 
     await transporter.sendMail({
       from: `"Decoasis Perú" <${emailUser}>`,
@@ -309,12 +312,15 @@ async function sendPaidConfirmationEmail(orderId: string, total: number, items: 
 
   try {
     const transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      family: 4,
       auth: {
         user: emailUser,
         pass: emailPass,
       },
-    });
+    } as any);
 
     await transporter.sendMail({
       from: `"Decoasis Perú" <${emailUser}>`,
