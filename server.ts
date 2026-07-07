@@ -15,6 +15,124 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
 app.use(express.json());
 
+// Unified helper function to send emails via HTTP API (Brevo/Resend) or SMTP (Gmail)
+async function sendUnifiedEmail({
+  to,
+  cc,
+  subject,
+  html,
+}: {
+  to: string;
+  cc?: string;
+  subject: string;
+  html: string;
+}) {
+  const emailUser = process.env.EMAIL_USER || "gpasachet@gmail.com";
+  const emailPass = process.env.EMAIL_PASS;
+  const brevoApiKey = process.env.BREVO_API_KEY;
+  const resendApiKey = process.env.RESEND_API_KEY;
+
+  // 1. Brevo HTTP API (Port 443, never blocked)
+  if (brevoApiKey) {
+    console.log(`[Email API] Enviando correo vía Brevo HTTP API a: ${to}...`);
+    try {
+      const response = await globalThis.fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "api-key": brevoApiKey,
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({
+          sender: { name: "Decoasis Perú", email: emailUser },
+          to: [{ email: to }],
+          ...(cc ? { cc: [{ email: cc }] } : {}),
+          subject: subject,
+          htmlContent: html,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Brevo API error: ${response.status} - ${JSON.stringify(errorData)}`);
+      }
+
+      console.log(`[Email API] Correo enviado exitosamente vía Brevo API a ${to}`);
+      return { sent: true, simulated: false, provider: "brevo" };
+    } catch (apiErr: any) {
+      console.error("[Email API] Falló envío vía Brevo API:", apiErr);
+      throw apiErr;
+    }
+  }
+
+  // 2. Resend HTTP API (Port 443, never blocked)
+  if (resendApiKey) {
+    console.log(`[Email API] Enviando correo vía Resend HTTP API a: ${to}...`);
+    try {
+      const response = await globalThis.fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: `Decoasis Perú <onboarding@resend.dev>`, // Resend free tier uses onboarding@resend.dev until domain is verified
+          to: [to],
+          ...(cc ? { cc: [cc] } : {}),
+          subject: subject,
+          html: html,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Resend API error: ${response.status} - ${JSON.stringify(errorData)}`);
+      }
+
+      console.log(`[Email API] Correo enviado exitosamente vía Resend API a ${to}`);
+      return { sent: true, simulated: false, provider: "resend" };
+    } catch (apiErr: any) {
+      console.error("[Email API] Falló envío vía Resend API:", apiErr);
+      throw apiErr;
+    }
+  }
+
+  // 3. Fallback to Gmail SMTP if EMAIL_PASS is present
+  if (emailPass) {
+    console.log(`[Email SMTP] Enviando correo vía SMTP (Gmail) a: ${to}...`);
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      family: 4,
+      auth: {
+        user: emailUser,
+        pass: emailPass,
+      },
+    } as any);
+
+    await transporter.sendMail({
+      from: `"Decoasis Perú" <${emailUser}>`,
+      to: to,
+      ...(cc ? { cc: cc } : {}),
+      subject: subject,
+      html: html,
+    });
+
+    console.log(`[Email SMTP] Correo enviado exitosamente vía SMTP a ${to}`);
+    return { sent: true, simulated: false, provider: "smtp" };
+  }
+
+  // 4. No credentials
+  console.warn("[Email Simulation] EMAIL_PASS, BREVO_API_KEY o RESEND_API_KEY no están configuradas en las variables de entorno (.env).");
+  console.log(`[Email Simulation] DETALLES DEL CORREO SIMULADO:`);
+  console.log(`- De: "Decoasis Perú" <${emailUser}>`);
+  console.log(`- Para: ${to}`);
+  if (cc) console.log(`- CC: ${cc}`);
+  console.log(`- Asunto: ${subject}`);
+  return { sent: true, simulated: true, provider: "simulation" };
+}
+
 // Helper function to send email notification to the merchant and CC the customer
 async function sendOrderEmail(orderId: string, paymentMethod: string, amount: number, items: any[], customerInfo: any) {
   const emailUser = process.env.EMAIL_USER || "gpasachet@gmail.com";
@@ -143,41 +261,16 @@ async function sendOrderEmail(orderId: string, paymentMethod: string, amount: nu
     </div>
   `;
 
-  if (!emailPass) {
-    console.warn("[Email Simulation] EMAIL_PASS no está configurada en las variables de entorno (.env). No se puede enviar el correo de producción.");
-    console.log(`[Email Simulation] DETALLES DEL CORREO SIMULADO:`);
-    console.log(`- De: "Decoasis Perú" <${emailUser}>`);
-    console.log(`- Para: ${emailUser}`);
-    console.log(`- CC: ${customerInfo.email}`);
-    console.log(`- Asunto: 🌿 Nuevo Pedido [${orderId}] - ${deliveryTypeLabel} - total S/ ${amount.toFixed(2)}`);
-    return { sent: true, simulated: true };
-  }
-
   try {
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      family: 4,
-      auth: {
-        user: emailUser,
-        pass: emailPass,
-      },
-    } as any);
-
-    await transporter.sendMail({
-      from: `"Decoasis Perú" <${emailUser}>`,
+    const result = await sendUnifiedEmail({
       to: emailUser,
       cc: customerInfo.email,
       subject: `🌿 Nuevo Pedido [${orderId}] - ${deliveryTypeLabel} - total S/ ${amount.toFixed(2)}`,
       html: htmlContent,
     });
-
-    console.log(`[Email] Correo enviado exitosamente a ${emailUser} y CC a ${customerInfo.email}`);
-    return { sent: true, simulated: false };
+    return result;
   } catch (err: any) {
-    console.error("[Email] Error al enviar correo de notificación:", err);
-    return { sent: false, error: err.message };
+    return { sent: false, simulated: false, error: err.message };
   }
 }
 
@@ -305,39 +398,15 @@ async function sendPaidConfirmationEmail(orderId: string, total: number, items: 
     </div>
   `;
 
-  if (!emailPass) {
-    console.warn("[Email Simulation] EMAIL_PASS no está configurada en las variables de entorno (.env). No se puede enviar el correo de producción.");
-    console.log(`[Email Simulation] DETALLES DEL CORREO DE CONFIRMACIÓN AL CLIENTE:`);
-    console.log(`- De: "Decoasis Perú" <${emailUser}>`);
-    console.log(`- Para: ${customerInfo.email}`);
-    console.log(`- Asunto: 🌿 ¡Tu compra en Decoasis Perú está confirmada! [Pedido: ${orderId}]`);
-    return { sent: true, simulated: true };
-  }
-
   try {
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      family: 4,
-      auth: {
-        user: emailUser,
-        pass: emailPass,
-      },
-    } as any);
-
-    await transporter.sendMail({
-      from: `"Decoasis Perú" <${emailUser}>`,
+    const result = await sendUnifiedEmail({
       to: customerInfo.email,
       subject: `🌿 ¡Tu compra en Decoasis Perú está confirmada! [Pedido: ${orderId}]`,
       html: htmlContent,
     });
-
-    console.log(`[Email] Correo de confirmación enviado exitosamente al cliente: ${customerInfo.email}`);
-    return { sent: true, simulated: false };
+    return result;
   } catch (err: any) {
-    console.error("[Email] Error al enviar correo de confirmación al cliente:", err);
-    return { sent: false, error: err.message };
+    return { sent: false, simulated: false, error: err.message };
   }
 }
 
