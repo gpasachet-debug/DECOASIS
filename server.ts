@@ -3,6 +3,10 @@ import path from "path";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import nodemailer from "nodemailer";
+import dns from "dns";
+
+// Force IPv4 first to prevent ENETUNREACH errors on environments without IPv6 support (e.g., Render, Cloud Run)
+dns.setDefaultResultOrder("ipv4first");
 
 dotenv.config();
 
