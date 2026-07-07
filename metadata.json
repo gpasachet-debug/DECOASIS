@@ -1,0 +1,6 @@
+{
+  "name": "Decoasis Perú",
+  "description": "Boutique botánica en Punta Hermosa con selección de plantas excepcionales, macetas artesanales y pasarela de pagos segura integrada.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
