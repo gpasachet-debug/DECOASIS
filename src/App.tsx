@@ -15,13 +15,15 @@ import {
   Star,
   Check,
   CreditCard,
-  Lock
+  Lock,
+  BookOpen
 } from "lucide-react";
 import { PLANTS } from "./data";
 import { CartItem, OrderDetails, Plant } from "./types";
 import CheckoutPortal from "./components/CheckoutPortal";
 import OrderSuccessPortal from "./components/OrderSuccessPortal";
 import AdminDashboard from "./components/AdminDashboard";
+import { TermsModal, PrivacyModal, RefundModal, ComplaintsBookModal } from "./components/LegalDocs";
 import { saveOrderToFirestore } from "./firebase";
 
 export default function App() {
@@ -36,6 +38,12 @@ export default function App() {
   const [successfulOrder, setSuccessfulOrder] = useState<any | null>(null);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [copyrightClicks, setCopyrightClicks] = useState(0);
+
+  // Legal Modals state
+  const [showTermsApp, setShowTermsApp] = useState(false);
+  const [showPrivacyApp, setShowPrivacyApp] = useState(false);
+  const [showRefundApp, setShowRefundApp] = useState(false);
+  const [showComplaintsApp, setShowComplaintsApp] = useState(false);
 
   // Sync cart to localStorage
   useEffect(() => {
@@ -381,13 +389,13 @@ export default function App() {
           <div className="absolute -right-32 -bottom-32 w-96 h-96 rounded-full bg-[#81b896]/5 filter blur-3xl"></div>
         </div>
 
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-16 relative z-10 text-left">
-          {/* Logo & About */}
+        <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-12 lg:gap-16 relative z-10 text-left">
+          {/* Column 1: Logo & About */}
           <div>
             <img 
               src="https://lh3.googleusercontent.com/d/1tSnV2r8aV8oKPOE6tgwpgppFXQhZCrri" 
               alt="Logo Decoasis" 
-              className="w-48 mb-8 object-contain"
+              className="w-48 mb-6 object-contain"
             />
             {/* Reviews badge */}
             <div className="flex items-center gap-2.5 mb-6">
@@ -398,7 +406,7 @@ export default function App() {
               <span className="text-[10px] text-[#fdfcf8]/60">(3 opiniones en Google Maps)</span>
             </div>
 
-            <p className="font-sans font-light text-xs text-[#fdfcf8]/70 max-w-sm leading-relaxed mb-8">
+            <p className="font-sans font-light text-xs text-[#fdfcf8]/70 max-w-sm leading-relaxed mb-6">
               Elevando tus espacios a través del diseño botánico artesanal y piezas únicas de decoración frente al mar de Punta Hermosa.
             </p>
             
@@ -416,10 +424,10 @@ export default function App() {
             </div>
           </div>
           
-          {/* Location details */}
+          {/* Column 2: Encuéntranos & Datos de Comercio */}
           <div>
             <h4 className="font-serif text-xl text-white mb-6 italic">Encuéntranos</h4>
-            <ul className="space-y-4 font-sans text-xs font-light text-[#fdfcf8]/70">
+            <ul className="space-y-4 font-sans text-xs font-light text-[#fdfcf8]/70 mb-4">
               <li className="flex items-start gap-3">
                 <MapPin className="w-4 h-4 text-[#81b896] mt-0.5 flex-shrink-0" />
                 <span>Av. García Rada,<br />Punta Hermosa 15846, Lima</span>
@@ -428,23 +436,17 @@ export default function App() {
                 <Phone className="w-4 h-4 text-[#81b896] flex-shrink-0" />
                 <a href="tel:+51933836011" className="hover:text-white transition-colors">+51 933 836 011</a>
               </li>
-              <li className="pt-2">
-                {/* Embed Map */}
-                <div className="rounded-2xl overflow-hidden grayscale hover:grayscale-0 transition-all duration-500 border border-white/10 h-36 w-full">
-                  <iframe 
-                    src="https://www.google.com/maps/embed?pb=!1m17!1m12!1m3!1d3893.931720491953!2d-76.82723927498263!3d-12.333319652420352!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m2!1m1!2zMTLCsDIwJzAwLjAiUyA3NsKwNDknMzAuMiJX!5e0!3m2!1ses!2spe!4v1748398800000!5m2!1ses!2spe" 
-                    width="100%" 
-                    height="100%" 
-                    style={{ border: 0 }} 
-                    allowFullScreen={false} 
-                    loading="lazy"
-                  ></iframe>
-                </div>
-              </li>
             </ul>
+
+            <div className="border-t border-white/10 pt-4 mt-4 font-sans text-[11px] text-[#fdfcf8]/60 space-y-1">
+              <p className="font-bold text-white uppercase text-[9px] tracking-wider mb-2">Datos del Comercio</p>
+              <p><strong>Razón Social:</strong> DECOASIS PERÚ S.A.C.</p>
+              <p><strong>RUC:</strong> 20608543210</p>
+              <p><strong>Dirección:</strong> Av. García Rada, Punta Hermosa</p>
+            </div>
           </div>
 
-          {/* Schedule */}
+          {/* Column 3: Servicios & Horario */}
           <div>
             <h4 className="font-serif text-xl text-white mb-6 italic">Servicios & Horario</h4>
             <div className="space-y-6 text-xs font-light text-[#fdfcf8]/70">
@@ -468,9 +470,60 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          {/* Column 4: Información Legal (Culqi Compliance) */}
+          <div>
+            <h4 className="font-serif text-xl text-white mb-6 italic">Información Legal</h4>
+            <div className="flex flex-col space-y-3 text-xs font-light text-[#fdfcf8]/70">
+              <button 
+                onClick={() => setShowTermsApp(true)}
+                className="text-left hover:text-white transition-colors flex items-center gap-2 cursor-pointer w-fit"
+              >
+                <Check className="w-3.5 h-3.5 text-[#81b896]" /> Términos y Condiciones
+              </button>
+              <button 
+                onClick={() => setShowPrivacyApp(true)}
+                className="text-left hover:text-white transition-colors flex items-center gap-2 cursor-pointer w-fit"
+              >
+                <Check className="w-3.5 h-3.5 text-[#81b896]" /> Políticas de Privacidad
+              </button>
+              <button 
+                onClick={() => setShowRefundApp(true)}
+                className="text-left hover:text-white transition-colors flex items-center gap-2 cursor-pointer w-fit"
+              >
+                <Check className="w-3.5 h-3.5 text-[#81b896]" /> Devolución y Reembolso
+              </button>
+              
+              {/* Libro de Reclamaciones Link (INDECOPI) */}
+              <div className="border-t border-white/10 pt-4 mt-2">
+                <button 
+                  onClick={() => setShowComplaintsApp(true)}
+                  className="bg-[#fdfcf8] text-[#5a3c3c] hover:bg-[#81b896] hover:text-white transition-all font-semibold rounded-2xl py-3 px-4 flex items-center justify-center gap-2.5 w-full shadow-md text-xs cursor-pointer text-center"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  <span>Libro de Reclamaciones</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Accepted Payment Logos (Culqi Compliance Requirement) */}
+        <div className="max-w-7xl mx-auto mt-16 pt-8 border-t border-white/10 flex flex-col items-center gap-4 relative z-10">
+          <p className="text-[10px] uppercase tracking-widest text-[#fdfcf8]/40 font-bold">
+            Medios de pago 100% seguros procesados por Culqi
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <span className="border border-white/15 rounded-lg px-3 py-1.5 bg-white/5 text-[#fdfcf8] font-sans text-[10px] font-bold tracking-wider hover:bg-white/10 transition-colors">VISA</span>
+            <span className="border border-white/15 rounded-lg px-3 py-1.5 bg-white/5 text-[#fdfcf8] font-sans text-[10px] font-bold tracking-wider hover:bg-white/10 transition-colors">MASTERCARD</span>
+            <span className="border border-white/15 rounded-lg px-3 py-1.5 bg-white/5 text-[#fdfcf8] font-sans text-[10px] font-bold tracking-wider hover:bg-white/10 transition-colors">AMERICAN EXPRESS</span>
+            <span className="border border-white/15 rounded-lg px-3 py-1.5 bg-white/5 text-[#fdfcf8] font-sans text-[10px] font-bold tracking-wider hover:bg-white/10 transition-colors">DINERS CLUB</span>
+            <span className="border border-white/15 rounded-lg px-3 py-1.5 bg-[#00cfb1] text-white font-sans text-[10px] font-bold tracking-wider hover:opacity-90 transition-opacity">YAPE</span>
+            <span className="border border-white/15 rounded-lg px-3 py-1.5 bg-[#00c5df] text-white font-sans text-[10px] font-bold tracking-wider hover:opacity-90 transition-opacity">PLIN</span>
+          </div>
         </div>
         
-        <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-white/5 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="max-w-7xl mx-auto mt-12 pt-8 border-t border-white/5 flex flex-col sm:flex-row justify-between items-center gap-4 relative z-10">
           <p 
             onClick={handleCopyrightClick}
             className="text-[9px] uppercase tracking-widest text-[#fdfcf8]/30 cursor-pointer select-none"
@@ -614,6 +667,12 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+
+      {/* Legal Modals (Culqi Compliance) */}
+      <TermsModal isOpen={showTermsApp} onClose={() => setShowTermsApp(false)} />
+      <PrivacyModal isOpen={showPrivacyApp} onClose={() => setShowPrivacyApp(false)} />
+      <RefundModal isOpen={showRefundApp} onClose={() => setShowRefundApp(false)} />
+      <ComplaintsBookModal isOpen={showComplaintsApp} onClose={() => setShowComplaintsApp(false)} />
     </div>
   );
 }

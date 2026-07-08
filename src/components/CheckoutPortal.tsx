@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, CreditCard, Landmark, Check, Upload, Trash2, Smartphone, Loader2 } from "lucide-react";
 import { CartItem, CustomerInfo, PaymentMethodType } from "../types";
+import { TermsModal, PrivacyModal } from "./LegalDocs";
 
 // Simulated districts with shipping fees based on proximity to Punta Hermosa
 const DISTRICTS = [
@@ -42,6 +43,11 @@ export default function CheckoutPortal({ cart, total, onClose, onSuccess }: Chec
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>("culqi");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Culqi compliance terms states
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   // Delivery states
   const [deliveryType, setDeliveryType] = useState<"pickup" | "delivery">("pickup");
@@ -215,6 +221,10 @@ export default function CheckoutPortal({ cart, total, onClose, onSuccess }: Chec
 
   // Process Checkout Completion
   const handleCheckout = async () => {
+    if (!acceptedTerms) {
+      setError("Debe leer y aceptar los Términos y Condiciones y las Políticas de Privacidad para continuar con el pago.");
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -861,6 +871,36 @@ export default function CheckoutPortal({ cart, total, onClose, onSuccess }: Chec
                   )}
                 </div>
 
+                {/* Términos y Condiciones Checkbox (Requisito Culqi) */}
+                <div className="bg-[#5a3c3c]/5 border border-[#5a3c3c]/15 rounded-2xl p-4 flex items-start gap-3 text-left">
+                  <input
+                    id="accept-terms-checkbox"
+                    type="checkbox"
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    className="mt-1 rounded border-[#5a3c3c]/30 text-[#81b896] focus:ring-[#81b896] w-4 h-4 cursor-pointer"
+                  />
+                  <label htmlFor="accept-terms-checkbox" className="text-xs text-[#5a3c3c]/80 leading-relaxed cursor-pointer select-none">
+                    He leído y acepto los{" "}
+                    <button
+                      type="button"
+                      onClick={() => setShowTermsModal(true)}
+                      className="text-[#81b896] hover:underline font-bold"
+                    >
+                      Términos y Condiciones
+                    </button>{" "}
+                    y las{" "}
+                    <button
+                      type="button"
+                      onClick={() => setShowPrivacyModal(true)}
+                      className="text-[#81b896] hover:underline font-bold"
+                    >
+                      Políticas de Privacidad
+                    </button>{" "}
+                    de la tienda. Declaro que la información ingresada es real.
+                  </label>
+                </div>
+
                 {/* Navigation and Checkout buttons */}
                 <div className="flex flex-col sm:flex-row gap-4 pt-4">
                   <button
@@ -920,6 +960,10 @@ export default function CheckoutPortal({ cart, total, onClose, onSuccess }: Chec
           </div>
         </div>
       </motion.div>
+
+      {/* Culqi Legal Compliance Modals */}
+      <TermsModal isOpen={showTermsModal} onClose={() => setShowTermsModal(false)} />
+      <PrivacyModal isOpen={showPrivacyModal} onClose={() => setShowPrivacyModal(false)} />
     </div>
   );
 }

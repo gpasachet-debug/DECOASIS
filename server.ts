@@ -435,6 +435,109 @@ app.post("/api/send-paid-email", async (req, res) => {
 });
 
 
+// API endpoint to send Complaints Book (Libro de Reclamaciones) confirmation email
+app.post("/api/send-claim-email", async (req, res) => {
+  try {
+    const { claimId, claimData } = req.body;
+    if (!claimId || !claimData) {
+      return res.status(400).json({ error: "Datos del reclamo incompletos." });
+    }
+
+    const emailUser = process.env.EMAIL_USER || "gpasachet@gmail.com";
+    const isMinorLabel = claimData.isMinor ? "SÍ" : "NO";
+    const minorSection = claimData.isMinor 
+      ? `
+        <div style="margin-top: 10px; padding: 10px; background-color: #f9f6f0; border-radius: 8px; border-left: 3px solid #81b896;">
+          <p style="margin: 2px 0;"><strong>Nombre del Padre/Tutor:</strong> ${claimData.parentName}</p>
+          <p style="margin: 2px 0;"><strong>DNI del Padre/Tutor:</strong> ${claimData.parentDni}</p>
+        </div>
+      `
+      : "";
+
+    const htmlContent = `
+      <div style="font-family: sans-serif; color: #5a3c3c; max-width: 600px; margin: 0 auto; border: 1px solid #e0d9cc; border-radius: 16px; overflow: hidden; background-color: #fdfcf8;">
+        <div style="background-color: #5a3c3c; padding: 30px; text-align: center; color: #fdfcf8;">
+          <img src="https://lh3.googleusercontent.com/d/1tSnV2r8aV8oKPOE6tgwpgppFXQhZCrri" alt="Decoasis Perú Logo" style="width: 150px; margin-bottom: 15px; display: inline-block;" />
+          <h2 style="margin: 0; font-family: Georgia, serif; font-style: italic; font-size: 24px;">Libro de Reclamaciones</h2>
+          <p style="margin: 5px 0 0; font-size: 14px; font-weight: bold; color: #81b896; letter-spacing: 2px;">HOJA DE RECLAMACIÓN DIRECTA</p>
+          <p style="margin: 5px 0 0; font-size: 18px; font-family: monospace; font-weight: bold;">CÓDIGO: ${claimId}</p>
+        </div>
+        
+        <div style="padding: 30px;">
+          <p style="font-size: 14px; margin-top: 0; line-height: 1.6;">
+            Estimado(a) <strong>${claimData.name}</strong>,<br />
+            Confirmamos el registro de su reclamación en el Libro de Reclamaciones Virtual de <strong>DECOASIS PERÚ S.A.C.</strong>. A continuación, se detallan los datos registrados el día de hoy:
+          </p>
+          
+          <!-- 1. CONSUMER DATA -->
+          <h3 style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #81b896; border-bottom: 1px solid #5a3c3c10; padding-bottom: 5px; margin-top: 25px;">
+            1. Identificación del Consumidor
+          </h3>
+          <table style="width: 100%; font-size: 13px; line-height: 1.6;">
+            <tr><td style="width: 35%; font-weight: bold; color: #5a3c3c80;">Nombre completo:</td><td>${claimData.name}</td></tr>
+            <tr><td style="font-weight: bold; color: #5a3c3c80;">DNI / CE:</td><td>${claimData.dni}</td></tr>
+            <tr><td style="font-weight: bold; color: #5a3c3c80;">Teléfono:</td><td>${claimData.phone}</td></tr>
+            <tr><td style="font-weight: bold; color: #5a3c3c80;">Correo:</td><td>${claimData.email}</td></tr>
+            <tr><td style="font-weight: bold; color: #5a3c3c80;">Dirección:</td><td>${claimData.address}</td></tr>
+            <tr><td style="font-weight: bold; color: #5a3c3c80;">Menor de edad:</td><td>${isMinorLabel}</td></tr>
+          </table>
+          ${minorSection}
+
+          <!-- 2. PRODUCT / SERVICE -->
+          <h3 style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #81b896; border-bottom: 1px solid #5a3c3c10; padding-bottom: 5px; margin-top: 25px;">
+            2. Detalle del Bien Contratado
+          </h3>
+          <table style="width: 100%; font-size: 13px; line-height: 1.6;">
+            <tr><td style="width: 35%; font-weight: bold; color: #5a3c3c80;">Tipo de bien:</td><td style="text-transform: capitalize;">${claimData.itemType}</td></tr>
+            <tr><td style="font-weight: bold; color: #5a3c3c80;">Monto reclamado:</td><td>${claimData.itemAmount ? 'S/ ' + parseFloat(claimData.itemAmount).toFixed(2) : 'No especificado'}</td></tr>
+            <tr><td style="font-weight: bold; color: #5a3c3c80; vertical-align: top;">Descripción:</td><td>${claimData.itemDescription}</td></tr>
+          </table>
+
+          <!-- 3. CLAIM DETAILS -->
+          <h3 style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #81b896; border-bottom: 1px solid #5a3c3c10; padding-bottom: 5px; margin-top: 25px;">
+            3. Detalle de la Reclamación
+          </h3>
+          <table style="width: 100%; font-size: 13px; line-height: 1.6;">
+            <tr><td style="width: 35%; font-weight: bold; color: #5a3c3c80;">Tipo de incidencia:</td><td style="text-transform: capitalize; font-weight: bold; color: #d97706;">${claimData.claimType}</td></tr>
+            <tr><td style="font-weight: bold; color: #5a3c3c80; vertical-align: top;">Detalle de hechos:</td><td>${claimData.claimDetails}</td></tr>
+            <tr><td style="font-weight: bold; color: #5a3c3c80; vertical-align: top;">Pedido concreto:</td><td>${claimData.claimRequest}</td></tr>
+          </table>
+
+          <div style="margin-top: 30px; border-top: 1px solid #e0d9cc; padding-top: 20px; font-size: 12px; color: #5a3c3c60; line-height: 1.6;">
+            <p style="margin: 0 0 10px;"><strong>Nota legal:</strong> La formulación de un reclamo en esta hoja de reclamación no impide que el consumidor pueda acudir a otras vías de solución de controversias ni constituye una vía previa obligatoria.</p>
+            <p style="margin: 0;">Según el Reglamento de INDECOPI, daremos respuesta a su requerimiento en un plazo máximo de 15 días hábiles.</p>
+          </div>
+        </div>
+        
+        <div style="background-color: #5a3c3c0a; padding: 20px; text-align: center; font-size: 11px; color: #5a3c3c80; border-top: 1px solid #e0d9cc;">
+          <strong>DECOASIS PERÚ S.A.C.</strong> - RUC: 20608543210<br />
+          Dirección: Av. García Rada, Punta Hermosa 15846, Lima, Perú<br />
+          Contacto: +51 933 836 011 | gpasachet@gmail.com
+        </div>
+      </div>
+    `;
+
+    console.log(`[Claim API] Enviando correo de reclamo ${claimId} a ${claimData.email} y CC a admin...`);
+    const result = await sendUnifiedEmail({
+      to: claimData.email,
+      cc: emailUser,
+      subject: `🌿 Copia de Libro de Reclamaciones [${claimId}] - ${claimData.claimType.toUpperCase()} - Decoasis Perú`,
+      html: htmlContent,
+    });
+
+    return res.json({
+      success: true,
+      simulated: result.simulated,
+      claimId: claimId,
+      message: "Correo del Libro de Reclamaciones enviado correctamente.",
+    });
+  } catch (error: any) {
+    console.error("Error al procesar el correo de Libro de Reclamaciones:", error);
+    return res.status(500).json({ error: error.message || "Error interno al enviar el correo del Libro de Reclamaciones." });
+  }
+});
+
+
 // API endpoint to create a Culqi Charge
 app.post("/api/create-culqi-charge", async (req, res) => {
   try {
