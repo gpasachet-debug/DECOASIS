@@ -509,17 +509,65 @@ export default function App() {
         </div>
 
         {/* Accepted Payment Logos (Culqi Compliance Requirement) */}
-        <div className="max-w-7xl mx-auto mt-16 pt-8 border-t border-white/10 flex flex-col items-center gap-4 relative z-10">
+        <div className="max-w-4xl mx-auto mt-16 pt-8 border-t border-white/10 flex flex-col items-center gap-6 relative z-10">
           <p className="text-[10px] uppercase tracking-widest text-[#fdfcf8]/40 font-bold">
             Medios de pago 100% seguros procesados por Culqi
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <span className="border border-white/15 rounded-lg px-3 py-1.5 bg-white/5 text-[#fdfcf8] font-sans text-[10px] font-bold tracking-wider hover:bg-white/10 transition-colors">VISA</span>
-            <span className="border border-white/15 rounded-lg px-3 py-1.5 bg-white/5 text-[#fdfcf8] font-sans text-[10px] font-bold tracking-wider hover:bg-white/10 transition-colors">MASTERCARD</span>
-            <span className="border border-white/15 rounded-lg px-3 py-1.5 bg-white/5 text-[#fdfcf8] font-sans text-[10px] font-bold tracking-wider hover:bg-white/10 transition-colors">AMERICAN EXPRESS</span>
-            <span className="border border-white/15 rounded-lg px-3 py-1.5 bg-white/5 text-[#fdfcf8] font-sans text-[10px] font-bold tracking-wider hover:bg-white/10 transition-colors">DINERS CLUB</span>
-            <span className="border border-white/15 rounded-lg px-3 py-1.5 bg-[#00cfb1] text-white font-sans text-[10px] font-bold tracking-wider hover:opacity-90 transition-opacity">YAPE</span>
-            <span className="border border-white/15 rounded-lg px-3 py-1.5 bg-[#00c5df] text-white font-sans text-[10px] font-bold tracking-wider hover:opacity-90 transition-opacity">PLIN</span>
+          <div className="w-full bg-[#fcfbfa] border border-[#5a3c3c]/10 py-5 px-8 rounded-2xl flex flex-wrap items-center justify-center gap-x-12 gap-y-6 shadow-md">
+            {/* Visa (High-Fidelity Vector SVG) */}
+            <div className="h-4 md:h-5 hover:scale-105 transition-transform duration-300 select-none flex items-center cursor-pointer" title="Visa">
+              <svg viewBox="50 180 412 150" className="h-full w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M229 323h-32l20-133h33l-21 133Zm117-129c-6-3-16-6-29-6-31 0-54 18-54 44 0 19 16 30 28 36 13 6 17 11 17 16 0 9-10 13-19 13-13 0-20-2-31-7l-4-2-4 30c7 4 21 7 36 7 33 0 55-18 56-45 0-15-9-27-27-36-12-6-19-11-19-17 1-5 6-11 19-11 11 0 18 2 24 5l3 1 4-28Zm43 82 13-37 4-13 3 12 7 38h-27Zm40-86h-25c-8 0-13 3-17 11l-48 122h34l7-20h41l4 20h30l-26-133Zm-259 0-31 91-4-19c-6-21-24-44-44-55l29 116h34l50-133h-34Z M109 190H58l-1 3c40 11 67 38 78 70l-11-61c-2-9-8-11-15-12Z" fill="#1A1F71" />
+              </svg>
+            </div>
+            {/* Mastercard (High-Fidelity Vector SVG) */}
+            <div className="h-6 md:h-7 hover:scale-105 transition-transform duration-300 select-none flex items-center cursor-pointer" title="Mastercard">
+              <svg viewBox="50 126 412 260" className="h-full w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="180" cy="256" fill="#EB001B" r="120" />
+                <circle cx="332" cy="256" fill="#F79E1B" r="120" />
+                <path d="M256 349a120 120 0 0 1 0-186m0 0a120 120 180 0 1 0 186" fill="#FF5A00" />
+              </svg>
+            </div>
+            {/* Diners Club (High-Fidelity Vector SVG) */}
+            <div className="h-5 md:h-6 hover:scale-105 transition-transform duration-300 select-none flex items-center cursor-pointer" title="Diners Club">
+              <svg viewBox="0 0 100 32" className="h-full w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <ellipse cx="14" cy="16" rx="8" ry="11" stroke="#0079C1" strokeWidth="1.8" />
+                <ellipse cx="20" cy="16" rx="8" ry="11" stroke="#0079C1" strokeWidth="1.8" />
+                <text x="33" y="20" fill="#0079C1" fontSize="10" fontWeight="900" fontFamily="sans-serif" letterSpacing="-0.03em" style={{ fontStyle: 'italic' }}>Diners Club</text>
+              </svg>
+            </div>
+            {/* American Express (High-Fidelity Vector SVG) */}
+            <div className="h-6 md:h-7 hover:scale-105 transition-transform duration-300 select-none flex items-center cursor-pointer" title="American Express">
+              <svg viewBox="0 0 100 32" className="h-full w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="100" height="32" rx="6" fill="#0170c2" />
+                <text x="50" y="14" fill="#ffffff" fontSize="6.5" fontWeight="900" textAnchor="middle" fontFamily="sans-serif" letterSpacing="0.08em">AMERICAN</text>
+                <text x="50" y="24" fill="#ffffff" fontSize="6.5" fontWeight="900" textAnchor="middle" fontFamily="sans-serif" letterSpacing="0.08em">EXPRESS</text>
+              </svg>
+            </div>
+            {/* Yape (High-Fidelity Vector SVG) */}
+            <div className="h-7 md:h-8 hover:scale-105 transition-transform duration-300 select-none flex items-center cursor-pointer" title="Yape">
+              <svg viewBox="0 0 100 32" className="h-full w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 24 L7 28 L9 22 Z" fill="#00dcb4" />
+                <circle cx="16" cy="15" r="11" fill="#00dcb4" />
+                <text x="16" y="19" fill="#ffffff" fontSize="10" fontWeight="900" textAnchor="middle" fontFamily="sans-serif">S/</text>
+                <text x="32" y="21" fill="#742274" fontSize="18" fontWeight="900" fontFamily="sans-serif" style={{ fontStyle: 'italic', letterSpacing: '-0.04em' }}>yape</text>
+              </svg>
+            </div>
+            {/* Plin (High-Fidelity Vector SVG) */}
+            <div className="h-7 md:h-8 hover:scale-105 transition-transform duration-300 select-none flex items-center cursor-pointer" title="Plin">
+              <svg viewBox="0 0 100 32" className="h-full w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="plinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#00e5ff" />
+                    <stop offset="100%" stopColor="#00b0ff" />
+                  </linearGradient>
+                </defs>
+                <rect x="2" y="2" width="96" height="28" rx="14" fill="url(#plinGrad)" />
+                <path d="M18 28 L14 31 L18 26 Z" fill="url(#plinGrad)" />
+                <text x="50" y="21" fill="#ffffff" fontSize="15" fontWeight="900" textAnchor="middle" fontFamily="sans-serif" style={{ letterSpacing: '-0.02em' }}>plin</text>
+                <circle cx="53.8" cy="12.2" r="2.2" fill="#ff007a" />
+              </svg>
+            </div>
           </div>
         </div>
         
