@@ -23,9 +23,19 @@ import {
   MapPin,
   ClipboardList,
   AlertCircle,
-  FileImage
+  FileImage,
+  BookOpen
 } from "lucide-react";
-import { subscribeToOrders, updateOrderStatus, deleteOrderFromFirestore, Order } from "../firebase";
+import { 
+  subscribeToOrders, 
+  updateOrderStatus, 
+  deleteOrderFromFirestore, 
+  subscribeToClaims, 
+  updateClaimStatus, 
+  deleteClaimFromFirestore, 
+  Order, 
+  Claim 
+} from "../firebase";
 
 interface AdminDashboardProps {
   onClose: () => void;
@@ -38,27 +48,47 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   });
   const [authError, setAuthError] = useState<string | null>(null);
   
+  // Tab control
+  const [activeTab, setActiveTab] = useState<"orders" | "claims">("orders");
+
+  // Orders State
   const [orders, setOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [deliveryFilter, setDeliveryFilter] = useState<string>("all");
-  
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showScreenshotModal, setShowScreenshotModal] = useState<string | null>(null);
 
-  // Subscribe to real-time orders on mount if authenticated
+  // Claims State
+  const [claims, setClaims] = useState<Claim[]>([]);
+  const [claimSearchQuery, setClaimSearchQuery] = useState("");
+  const [claimTypeFilter, setClaimTypeFilter] = useState<string>("all");
+  const [claimStatusFilter, setClaimStatusFilter] = useState<string>("all");
+  const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
+  const [confirmDeleteClaimId, setConfirmDeleteClaimId] = useState<string | null>(null);
+  const [isUpdatingClaim, setIsUpdatingClaim] = useState(false);
+
+  // Subscribe to real-time orders and claims on mount if authenticated
   useEffect(() => {
     if (!isAuthenticated) return;
     
     console.log("[Admin] Suscribiéndose a pedidos en Firestore...");
-    const unsubscribe = subscribeToOrders((updatedOrders) => {
+    const unsubscribeOrders = subscribeToOrders((updatedOrders) => {
       setOrders(updatedOrders);
     });
+
+    console.log("[Admin] Suscribiéndose a reclamos en Firestore...");
+    const unsubscribeClaims = subscribeToClaims((updatedClaims) => {
+      setClaims(updatedClaims);
+    });
     
-    return () => unsubscribe();
+    return () => {
+      unsubscribeOrders();
+      unsubscribeClaims();
+    };
   }, [isAuthenticated]);
 
   const handleLogin = (e: React.FormEvent) => {
@@ -138,6 +168,48 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     }
   };
 
+  // Claim action handlers
+  const handleClaimStatusChange = async (claimId: string, newStatus: Claim["status"]) => {
+    setIsUpdatingClaim(true);
+    try {
+      await updateClaimStatus(claimId, newStatus);
+      if (selectedClaim && selectedClaim.id === claimId) {
+        setSelectedClaim(prev => prev ? { ...prev, status: newStatus } : null);
+      }
+    } catch (err) {
+      alert("Error al actualizar el estado del reclamo.");
+    } finally {
+      setIsUpdatingClaim(false);
+    }
+  };
+
+  const handleDeleteClaim = async (claimId: string) => {
+    try {
+      await deleteClaimFromFirestore(claimId);
+      setConfirmDeleteClaimId(null);
+      if (selectedClaim?.id === claimId) {
+        setSelectedClaim(null);
+      }
+    } catch (err) {
+      alert("Error al eliminar el reclamo.");
+    }
+  };
+
+  // Filter claims based on queries
+  const filteredClaims = claims.filter((claim) => {
+    const matchesSearch = 
+      (claim.id || "").toLowerCase().includes(claimSearchQuery.toLowerCase()) ||
+      (claim.name || "").toLowerCase().includes(claimSearchQuery.toLowerCase()) ||
+      (claim.dni || "").toLowerCase().includes(claimSearchQuery.toLowerCase()) ||
+      (claim.phone || "").toLowerCase().includes(claimSearchQuery.toLowerCase()) ||
+      (claim.email || "").toLowerCase().includes(claimSearchQuery.toLowerCase());
+      
+    const matchesType = claimTypeFilter === "all" || claim.claimType === claimTypeFilter;
+    const matchesStatus = claimStatusFilter === "all" || claim.status === claimStatusFilter;
+    
+    return matchesSearch && matchesType && matchesStatus;
+  });
+
   // Filter orders based on queries
   const filteredOrders = orders.filter((order) => {
     const matchesSearch = 
@@ -158,6 +230,11 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const pendingOrders = orders.filter(o => o.status === "pending").length;
   const inPreparation = orders.filter(o => o.status === "preparing" || o.status === "shipped").length;
   const completedOrders = orders.filter(o => o.status === "delivered").length;
+
+  // Calculate claims statistics
+  const totalClaims = claims.length;
+  const pendingClaims = claims.filter(c => c.status === "pendiente").length;
+  const resolvedClaims = claims.filter(c => c.status === "atendido").length;
 
   const getStatusLabelAndColor = (status: Order["status"]) => {
     switch (status) {
@@ -270,8 +347,10 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
             </button>
             <div>
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <h1 className="text-xl font-serif italic text-[#5a3c3c] font-semibold">Bandeja de Pedidos</h1>
+                <span className={`w-2.5 h-2.5 rounded-full animate-pulse ${activeTab === "orders" ? "bg-emerald-500" : "bg-purple-500"}`}></span>
+                <h1 className="text-xl font-serif italic text-[#5a3c3c] font-semibold">
+                  {activeTab === "orders" ? "Bandeja de Pedidos" : "Libro de Reclamaciones"}
+                </h1>
               </div>
               <p className="text-[10px] uppercase tracking-widest text-[#5a3c3c]/60 mt-0.5">Decoasis Perú — Panel de Operaciones</p>
             </div>
@@ -292,8 +371,38 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
       </header>
 
       <main className="flex-grow max-w-7xl w-full mx-auto p-6 md:p-8 space-y-8">
-        
-        {/* Statistics Cards Grid */}
+        {/* Tab Switcher */}
+        <div className="flex border-b border-[#5a3c3c]/10 gap-2 overflow-x-auto pb-px">
+          <button
+            onClick={() => setActiveTab("orders")}
+            className={`py-3 px-6 font-serif italic text-sm transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              activeTab === "orders" 
+                ? "border-[#5a3c3c] text-[#5a3c3c] font-bold" 
+                : "border-transparent text-[#5a3c3c]/50 hover:text-[#5a3c3c]"
+            }`}
+          >
+            <ClipboardList className="w-4 h-4" /> Pedidos ({orders.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("claims")}
+            className={`py-3 px-6 font-serif italic text-sm transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              activeTab === "claims" 
+                ? "border-[#5a3c3c] text-[#5a3c3c] font-bold" 
+                : "border-transparent text-[#5a3c3c]/50 hover:text-[#5a3c3c]"
+            }`}
+          >
+            <BookOpen className="w-4 h-4" /> Libro de Reclamaciones ({claims.length})
+            {claims.filter(c => c.status === "pendiente").length > 0 && (
+              <span className="bg-red-500 text-white text-[9px] font-bold font-sans rounded-full px-1.5 py-0.5 animate-pulse">
+                {claims.filter(c => c.status === "pendiente").length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {activeTab === "orders" ? (
+          <>
+            {/* Statistics Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-white p-6 rounded-3xl border border-[#5a3c3c]/5 shadow-sm flex items-center justify-between">
             <div>
@@ -524,6 +633,212 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
             </div>
           )}
         </div>
+        </>
+        ) : (
+          <>
+            {/* Claims Statistics Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div className="bg-white p-6 rounded-3xl border border-[#5a3c3c]/5 shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-[#5a3c3c]/50 font-bold">Total Reclamaciones</p>
+                  <h3 className="text-2xl font-serif font-bold text-[#5a3c3c] mt-2">{totalClaims}</h3>
+                  <p className="text-[10px] text-[#81b896] mt-1 font-semibold">Registros recibidos en total</p>
+                </div>
+                <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-[#81b896]">
+                  <BookOpen className="w-6 h-6" />
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-3xl border border-[#5a3c3c]/5 shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-[#5a3c3c]/50 font-bold">Pendientes</p>
+                  <h3 className="text-2xl font-serif font-bold text-amber-600 mt-2">{pendingClaims}</h3>
+                  <p className="text-[10px] text-amber-500 mt-1 font-semibold">Requieren atención urgente</p>
+                </div>
+                <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-3xl border border-[#5a3c3c]/5 shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-[#5a3c3c]/50 font-bold">Atendidos</p>
+                  <h3 className="text-2xl font-serif font-bold text-teal-600 mt-2">{resolvedClaims}</h3>
+                  <p className="text-[10px] text-teal-500 mt-1 font-semibold">Cerrados formalmente</p>
+                </div>
+                <div className="w-12 h-12 bg-teal-50 rounded-2xl flex items-center justify-center text-teal-600">
+                  <CheckCircle className="w-6 h-6" />
+                </div>
+              </div>
+            </div>
+
+            {/* Claims Filters and Search Panel */}
+            <div className="bg-white p-6 rounded-3xl border border-[#5a3c3c]/5 shadow-sm space-y-4">
+              <div className="flex flex-col lg:flex-row gap-4 justify-between items-stretch lg:items-center">
+                {/* Search Input */}
+                <div className="relative flex-grow max-w-md">
+                  <Search className="w-4 h-4 text-[#5a3c3c]/40 absolute left-4 top-1/2 -translate-y-1/2" />
+                  <input 
+                    type="text"
+                    value={claimSearchQuery}
+                    onChange={(e) => setClaimSearchQuery(e.target.value)}
+                    placeholder="Buscar por cliente, documento, celular o ID de reclamo..."
+                    className="w-full bg-[#5a3c3c]/5 border border-[#5a3c3c]/10 rounded-2xl pl-11 pr-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#81b896] focus:bg-white transition-all text-[#5a3c3c]"
+                  />
+                </div>
+
+                {/* Filter selectors */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2 bg-[#5a3c3c]/5 px-3 py-2 rounded-xl border border-[#5a3c3c]/10">
+                    <Filter className="w-3.5 h-3.5 text-[#5a3c3c]/60" />
+                    <span className="text-[10px] uppercase font-bold text-[#5a3c3c]/60">Tipo:</span>
+                    <select 
+                      value={claimTypeFilter}
+                      onChange={(e) => setClaimTypeFilter(e.target.value)}
+                      className="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer text-[#5a3c3c]"
+                    >
+                      <option value="all">Todos los tipos</option>
+                      <option value="reclamo">Reclamo</option>
+                      <option value="queja">Queja</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 bg-[#5a3c3c]/5 px-3 py-2 rounded-xl border border-[#5a3c3c]/10">
+                    <CheckCircle className="w-3.5 h-3.5 text-[#5a3c3c]/60" />
+                    <span className="text-[10px] uppercase font-bold text-[#5a3c3c]/60">Estado:</span>
+                    <select 
+                      value={claimStatusFilter}
+                      onChange={(e) => setClaimStatusFilter(e.target.value)}
+                      className="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer text-[#5a3c3c]"
+                    >
+                      <option value="all">Todos los estados</option>
+                      <option value="pendiente">Pendientes</option>
+                      <option value="atendido">Atendidos</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Claims Table */}
+            <div className="bg-white rounded-3xl border border-[#5a3c3c]/5 shadow-sm overflow-hidden">
+              {filteredClaims.length === 0 ? (
+                <div className="p-16 text-center text-[#5a3c3c]/40 space-y-3">
+                  <BookOpen className="w-12 h-12 text-[#81b896] mx-auto animate-bounce" />
+                  <p className="font-serif italic text-lg text-[#5a3c3c]">No se encontraron reclamaciones</p>
+                  <p className="text-xs text-gray-400">No hay reclamos que coincidan con los filtros aplicados.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-[#5a3c3c]/5 border-b border-[#5a3c3c]/5 text-[10px] uppercase tracking-widest text-[#5a3c3c]/60 font-bold">
+                        <th className="px-6 py-4 text-left">Código Reclamo</th>
+                        <th className="px-6 py-4 text-left">Fecha</th>
+                        <th className="px-6 py-4 text-left">Consumidor</th>
+                        <th className="px-6 py-4 text-left">Tipo</th>
+                        <th className="px-6 py-4 text-left">Bien Contratado</th>
+                        <th className="px-6 py-4 text-center">Estado</th>
+                        <th className="px-6 py-4 text-center">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#5a3c3c]/5 text-sm text-[#5a3c3c]">
+                      {filteredClaims.map((claim) => {
+                        return (
+                          <tr 
+                            key={claim.id}
+                            className="hover:bg-[#5a3c3c]/2 transition-colors cursor-pointer group"
+                            onClick={() => setSelectedClaim(claim)}
+                          >
+                            {/* ID */}
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-gray-900 group-hover:text-[#81b896] transition-colors">{claim.id}</span>
+                                <button 
+                                  onClick={(e) => handleCopyId(claim.id, e)}
+                                  className="p-1 text-gray-400 hover:text-gray-900 rounded-md hover:bg-gray-100 transition-all"
+                                  title="Copiar ID"
+                                >
+                                  {copiedId === claim.id ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                                </button>
+                              </div>
+                            </td>
+                            
+                            {/* Date */}
+                            <td className="px-6 py-4 text-xs font-medium text-gray-500 whitespace-nowrap">
+                              <div className="flex items-center gap-1.5">
+                                <Calendar className="w-3 h-3" />
+                                {claim.date}
+                              </div>
+                            </td>
+
+                            {/* Claimant */}
+                            <td className="px-6 py-4">
+                              <div className="font-semibold text-gray-900 leading-tight">{claim.name}</div>
+                              <div className="text-xs text-gray-500 mt-0.5">DNI: {claim.dni}</div>
+                            </td>
+
+                            {/* Type */}
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {claim.claimType === "reclamo" ? (
+                                <span className="text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-full px-2.5 py-1">
+                                  📙 Reclamo
+                                </span>
+                              ) : (
+                                <span className="text-xs font-semibold bg-purple-50 text-purple-800 border border-purple-200 rounded-full px-2.5 py-1">
+                                  📘 Queja
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Contracted Item */}
+                            <td className="px-6 py-4 max-w-xs truncate">
+                              <div className="font-medium text-gray-900 truncate">{claim.itemDescription}</div>
+                              <div className="text-[10px] text-gray-400 mt-0.5 capitalize">{claim.itemType} {claim.itemAmount ? `• S/ ${parseFloat(claim.itemAmount).toFixed(2)}` : ""}</div>
+                            </td>
+
+                            {/* Status badge */}
+                            <td className="px-6 py-4 text-center whitespace-nowrap">
+                              {claim.status === "atendido" ? (
+                                <span className="px-3 py-1 rounded-full text-xs font-semibold border bg-emerald-100 text-emerald-800 border-emerald-200">
+                                  Atendido
+                                </span>
+                              ) : (
+                                <span className="px-3 py-1 rounded-full text-xs font-semibold border bg-amber-100 text-amber-800 border-amber-200">
+                                  Pendiente
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-center gap-2">
+                                <button 
+                                  onClick={() => setSelectedClaim(claim)}
+                                  className="p-2 hover:bg-gray-100 text-gray-600 hover:text-gray-900 rounded-lg transition-colors border border-gray-200"
+                                  title="Ver reclamo completo"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <button 
+                                  onClick={() => setConfirmDeleteClaimId(claim.id)}
+                                  className="p-2 hover:bg-red-50 text-red-500 hover:text-red-700 rounded-lg transition-colors border border-red-100"
+                                  title="Eliminar reclamo"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </main>
 
       {/* Delete Confirmation Overlay */}
@@ -804,6 +1119,226 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                     )}
                   </div>
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Claim Confirmation Overlay */}
+      <AnimatePresence>
+        {confirmDeleteClaimId && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2200] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full border border-gray-100 text-center space-y-6"
+            >
+              <div className="w-12 h-12 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto border border-red-100">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-serif text-lg font-bold text-gray-900">¿Eliminar esta reclamación?</h4>
+                <p className="text-xs text-gray-500 mt-2">Esta acción es irreversible y borrará permanentemente los datos del registro <strong>{confirmDeleteClaimId}</strong> de la base de datos de Firestore.</p>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setConfirmDeleteClaimId(null)}
+                  className="w-1/2 bg-gray-100 text-gray-700 font-bold uppercase tracking-wider text-[10px] py-4 rounded-full hover:bg-gray-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => handleDeleteClaim(confirmDeleteClaimId)}
+                  className="w-1/2 bg-red-600 text-white font-bold uppercase tracking-wider text-[10px] py-4 rounded-full hover:bg-red-700 transition-colors shadow-md"
+                >
+                  Confirmar Borrado
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Claim Details Modal Overlay */}
+      <AnimatePresence>
+        {selectedClaim && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex justify-end">
+            <motion.div 
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="bg-[#fdfcf8] w-full max-w-2xl h-full shadow-2xl flex flex-col overflow-hidden text-left border-l border-gray-100"
+            >
+              {/* Header */}
+              <div className="p-6 bg-white border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs font-bold text-gray-400">Reclamación ID</span>
+                    <span className="bg-[#5a3c3c]/5 text-[#5a3c3c] font-mono text-sm font-bold px-3 py-1 rounded-lg">
+                      {selectedClaim.id}
+                    </span>
+                    {selectedClaim.claimType === "reclamo" ? (
+                      <span className="text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-full px-2.5 py-0.5">
+                        📙 Reclamo
+                      </span>
+                    ) : (
+                      <span className="text-xs font-semibold bg-purple-50 text-purple-800 border border-purple-200 rounded-full px-2.5 py-0.5">
+                        📘 Queja
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">Registrado el {selectedClaim.date}</p>
+                </div>
+                <button 
+                  onClick={() => setSelectedClaim(null)}
+                  className="p-2.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-900 transition-colors border border-gray-200"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Action Buttons Bar */}
+              <div className="bg-[#5a3c3c]/2 px-6 py-4 border-b border-[#5a3c3c]/5 flex flex-wrap gap-3 items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 font-semibold">Estado de la reclamación:</span>
+                  <select 
+                    value={selectedClaim.status}
+                    onChange={(e) => handleClaimStatusChange(selectedClaim.id, e.target.value as Claim["status"])}
+                    disabled={isUpdatingClaim}
+                    className={`px-4 py-1.5 rounded-full text-xs font-bold border focus:outline-none cursor-pointer ${
+                      selectedClaim.status === "atendido" 
+                        ? "bg-emerald-100 text-emerald-800 border-emerald-200" 
+                        : "bg-amber-100 text-amber-800 border-amber-200"
+                    }`}
+                  >
+                    <option value="pendiente">Pendiente</option>
+                    <option value="atendido">Atendido</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* WhatsApp contact link */}
+                  <a 
+                    href={`https://wa.me/51${selectedClaim.phone}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 px-4 py-2 bg-[#25d366] hover:bg-[#128c7e] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                  >
+                    <Phone className="w-3.5 h-3.5" /> WhatsApp
+                  </a>
+                  <button 
+                    onClick={() => setConfirmDeleteClaimId(selectedClaim.id)}
+                    className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 border border-rose-200/40 rounded-xl transition-all"
+                    title="Eliminar registro"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Main Content Areas */}
+              <div className="flex-grow overflow-y-auto p-6 space-y-6">
+                
+                {/* Section 1: Customer (Consumidor) Details */}
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+                  <h4 className="font-serif italic font-bold text-base text-[#5a3c3c] border-b border-gray-100 pb-2">
+                    1. Identificación del Consumidor Reclamante
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Nombre Completo / Razón Social</p>
+                      <p className="font-bold text-gray-900 mt-1">{selectedClaim.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Documento de Identidad (DNI/CE)</p>
+                      <p className="font-bold text-gray-900 mt-1">{selectedClaim.dni}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Teléfono Celular</p>
+                      <p className="font-bold text-gray-900 mt-1 flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-[#5a3c3c]/40" /> {selectedClaim.phone}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Correo Electrónico</p>
+                      <p className="font-bold text-gray-900 mt-1 flex items-center gap-1.5 truncate">
+                        <Mail className="w-3.5 h-3.5 text-[#5a3c3c]/40" /> {selectedClaim.email}
+                      </p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <p className="text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Domicilio</p>
+                      <p className="font-bold text-gray-900 mt-1 flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-[#5a3c3c]/40" /> {selectedClaim.address}
+                      </p>
+                    </div>
+                    {selectedClaim.isMinor && (
+                      <div className="sm:col-span-2 bg-amber-50/50 p-3 rounded-xl border border-amber-100 space-y-2">
+                        <p className="text-amber-800 font-bold uppercase tracking-wider text-[9px] flex items-center gap-1">
+                          ⚠️ Consumidor Menor de Edad
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-[#5a3c3c]">
+                          <div>
+                            <span className="font-semibold text-gray-500">Nombre del Padre/Madre o Tutor:</span>
+                            <p className="font-bold">{selectedClaim.parentName}</p>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-gray-500">DNI del Tutor:</span>
+                            <p className="font-bold">{selectedClaim.parentDni}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Section 2: Contracted Item (Bien Contratado) */}
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+                  <h4 className="font-serif italic font-bold text-base text-[#5a3c3c] border-b border-gray-100 pb-2">
+                    2. Detalle del Bien Contratado
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Tipo de Bien</p>
+                      <p className="font-bold text-gray-900 mt-1 capitalize">{selectedClaim.itemType === "producto" ? "📦 Producto (Muebles / Espejos)" : "🛠️ Servicio"}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Monto Reclamado</p>
+                      <p className="font-serif font-bold text-gray-900 mt-1 text-sm">
+                        {selectedClaim.itemAmount ? `S/ ${parseFloat(selectedClaim.itemAmount).toFixed(2)}` : "No especificado"}
+                      </p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <p className="text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Descripción Breve del Producto/Servicio</p>
+                      <p className="font-medium text-gray-700 mt-1 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                        {selectedClaim.itemDescription}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 3: Claim/Complaint details (Detalle de Reclamación) */}
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+                  <h4 className="font-serif italic font-bold text-base text-[#5a3c3c] border-b border-gray-100 pb-2">
+                    3. Detalle de la Reclamación y Pedido del Consumidor
+                  </h4>
+                  <div className="space-y-4 text-xs">
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Hechos expuestos por el consumidor</p>
+                      <p className="font-medium text-gray-700 mt-1.5 whitespace-pre-line bg-gray-50 p-4 rounded-xl border border-gray-100 leading-relaxed">
+                        {selectedClaim.details}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Pedido Concreto (Acción solicitada por el cliente)</p>
+                      <p className="font-medium text-gray-700 mt-1.5 whitespace-pre-line bg-emerald-50/20 p-4 rounded-xl border border-emerald-100/40 leading-relaxed text-[#5a3c3c]">
+                        {selectedClaim.requestedAction}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </motion.div>
           </div>

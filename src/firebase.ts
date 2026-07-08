@@ -148,3 +148,70 @@ export function subscribeToOrders(onUpdate: (orders: Order[]) => void) {
     console.error("[Firebase] Error al escuchar pedidos en tiempo real:", error);
   });
 }
+
+export interface Claim {
+  id: string;
+  name: string;
+  dni: string;
+  phone: string;
+  email: string;
+  address: string;
+  isMinor: boolean;
+  parentName?: string;
+  parentDni?: string;
+  itemType: "producto" | "servicio";
+  itemDescription: string;
+  itemAmount?: string;
+  claimType: "reclamo" | "queja";
+  claimDetails: string;
+  claimRequest: string;
+  timestamp: any;
+  date: string;
+  status: "pendiente" | "atendido";
+}
+
+// Subscribe to claims in real-time
+export function subscribeToClaims(onUpdate: (claims: Claim[]) => void) {
+  const claimsCollection = collection(db, "claims");
+  const q = query(claimsCollection, orderBy("timestamp", "desc"), limit(100));
+  
+  return onSnapshot(q, (snapshot) => {
+    const claimsList: Claim[] = [];
+    snapshot.forEach((doc) => {
+      claimsList.push({ id: doc.id, ...doc.data() } as Claim);
+    });
+    onUpdate(claimsList);
+  }, (error) => {
+    console.error("[Firebase] Error al escuchar reclamos en tiempo real:", error);
+  });
+}
+
+// Update the status of a claim
+export async function updateClaimStatus(claimId: string, status: Claim["status"]) {
+  try {
+    const claimRef = doc(db, "claims", claimId);
+    await updateDoc(claimRef, {
+      status,
+      updatedAt: serverTimestamp()
+    });
+    console.log(`[Firebase] Estado del reclamo ${claimId} actualizado a: ${status}`);
+    return { success: true };
+  } catch (error) {
+    console.error("[Firebase] Error al actualizar estado del reclamo:", error);
+    throw error;
+  }
+}
+
+// Delete a claim from Firestore (Admin only)
+export async function deleteClaimFromFirestore(claimId: string) {
+  try {
+    const claimRef = doc(db, "claims", claimId);
+    await deleteDoc(claimRef);
+    console.log(`[Firebase] Reclamo ${claimId} eliminado de Firestore.`);
+    return { success: true };
+  } catch (error) {
+    console.error("[Firebase] Error al eliminar el reclamo:", error);
+    throw error;
+  }
+}
+
