@@ -5,7 +5,7 @@ export const PLANTS: Plant[] = [
     id: 1,
     name: "Monstera Deliciosa",
     category: "tropical",
-    price: 45.00,
+    price: 10.00,
     image: "https://lh3.googleusercontent.com/d/1EqsRtxUnQVItroHFCDxPmsMIIJvhHBn0=s1000",
     desc: "Hojas grandes y perforadas. Un clásico indispensable que aporta frescura y sofisticación."
   },
