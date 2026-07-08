@@ -165,6 +165,8 @@ export interface Claim {
   claimType: "reclamo" | "queja";
   claimDetails: string;
   claimRequest: string;
+  details?: string;
+  requestedAction?: string;
   timestamp: any;
   date: string;
   status: "pendiente" | "atendido";

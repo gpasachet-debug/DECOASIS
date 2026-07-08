@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "Order": {
+      "title": "Order",
+      "description": "Customer purchase order including items and payment details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "items": { "type": "array" },
+        "customerInfo": { "type": "object" },
+        "paymentMethod": { "type": "string" },
+        "transactionCode": { "type": "string" },
+        "screenshot": { "type": "string" },
+        "total": { "type": "number" },
+        "date": { "type": "string" },
+        "timestamp": { "type": "object" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "items", "customerInfo", "paymentMethod", "total", "status"]
+    },
+    "Claim": {
+      "title": "Claim",
+      "description": "Complaint or claim registered in the virtual complaints book",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "dni": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "isMinor": { "type": "boolean" },
+        "parentName": { "type": "string" },
+        "parentDni": { "type": "string" },
+        "itemType": { "type": "string" },
+        "itemDescription": { "type": "string" },
+        "itemAmount": { "type": "string" },
+        "claimType": { "type": "string" },
+        "claimDetails": { "type": "string" },
+        "claimRequest": { "type": "string" },
+        "details": { "type": "string" },
+        "requestedAction": { "type": "string" },
+        "timestamp": { "type": "object" },
+        "date": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "name", "dni", "phone", "email", "address", "isMinor", "itemType", "itemDescription", "claimType", "claimDetails", "claimRequest", "status"]
+    }
+  },
+  "firestore": {
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer purchase orders"
+    },
+    "/claims/{claimId}": {
+      "schema": "Claim",
+      "description": "Complaints and claims received via virtual complaints book"
+    }
+  }
+}

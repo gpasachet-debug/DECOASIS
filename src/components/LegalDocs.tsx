@@ -333,13 +333,25 @@ export function ComplaintsBookModal({ isOpen, onClose }: ModalProps) {
       
       // Save claim to Firestore
       const claimRef = doc(collection(db, "claims"), code);
-      await setDoc(claimRef, {
+      const claimPayload = {
         id: code,
         ...formData,
+        details: formData.claimDetails,
+        requestedAction: formData.claimRequest,
         timestamp: serverTimestamp(),
         date: new Date().toLocaleDateString("es-PE"),
         status: "pendiente",
+      };
+
+      // Safely remove any potential undefined values and preserve Firestore types
+      const cleanPayload: any = {};
+      Object.entries(claimPayload).forEach(([key, val]) => {
+        if (val !== undefined) {
+          cleanPayload[key] = val;
+        }
       });
+
+      await setDoc(claimRef, cleanPayload);
 
       // Send confirmation emails using our backend proxy
       await fetch("/api/send-claim-email", {

@@ -1328,13 +1328,13 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                     <div>
                       <p className="text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Hechos expuestos por el consumidor</p>
                       <p className="font-medium text-gray-700 mt-1.5 whitespace-pre-line bg-gray-50 p-4 rounded-xl border border-gray-100 leading-relaxed">
-                        {selectedClaim.details}
+                        {selectedClaim.details || selectedClaim.claimDetails}
                       </p>
                     </div>
                     <div>
                       <p className="text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Pedido Concreto (Acción solicitada por el cliente)</p>
                       <p className="font-medium text-gray-700 mt-1.5 whitespace-pre-line bg-emerald-50/20 p-4 rounded-xl border border-emerald-100/40 leading-relaxed text-[#5a3c3c]">
-                        {selectedClaim.requestedAction}
+                        {selectedClaim.requestedAction || selectedClaim.claimRequest}
                       </p>
                     </div>
                   </div>
