@@ -44,6 +44,15 @@ export default function CheckoutPortal({ cart, total, onClose, onSuccess }: Chec
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Ref to scroll container back to top on step change
+  const contentRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTop = 0;
+    }
+  }, [step]);
+
   // Culqi compliance terms states
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
@@ -419,7 +428,7 @@ export default function CheckoutPortal({ cart, total, onClose, onSuccess }: Chec
         </div>
 
         {/* Content Area */}
-        <div className="p-8 md:p-10 flex-grow max-h-[60vh] overflow-y-auto custom-scrollbar">
+        <div ref={contentRef} className="p-8 md:p-10 flex-grow max-h-[60vh] overflow-y-auto custom-scrollbar">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-5 py-4 rounded-2xl text-xs mb-6 font-medium">
               {error}

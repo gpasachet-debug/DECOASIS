@@ -38,6 +38,7 @@ export default function App() {
   const [successfulOrder, setSuccessfulOrder] = useState<any | null>(null);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [copyrightClicks, setCopyrightClicks] = useState(0);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Legal Modals state
   const [showTermsApp, setShowTermsApp] = useState(false);
@@ -49,6 +50,16 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("decoasis_cart", JSON.stringify(cart));
   }, [cart]);
+
+  // Clear toast message after 3 seconds
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => {
+        setToastMessage(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
 
   // Check for Stripe / Simulated Redirect Success / Admin toggle on load
   useEffect(() => {
@@ -112,7 +123,7 @@ export default function App() {
       }
       return [...prev, { ...plant, quantity: 1 }];
     });
-    setIsCartOpen(true);
+    setToastMessage(`¡${plant.name} agregado! 🌿`);
   };
 
   const updateQuantity = (id: number, amount: number) => {
@@ -363,7 +374,7 @@ export default function App() {
                   {/* Hover Add to Bag button */}
                   <button 
                     onClick={() => addToCart(plant)}
-                    className="absolute bottom-8 left-8 right-8 bg-[#fdfcf8]/95 backdrop-blur-md py-5 rounded-full translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-500 shadow-xl font-sans font-bold text-[9px] tracking-[0.3em] uppercase text-[#5a3c3c] hover:text-[#81b896] cursor-pointer"
+                    className="absolute bottom-8 left-8 right-8 bg-[#fdfcf8]/95 backdrop-blur-md py-5 rounded-full shadow-xl font-sans font-bold text-[9px] tracking-[0.3em] uppercase text-[#5a3c3c] hover:text-[#81b896] cursor-pointer transition-all duration-500 translate-y-0 opacity-100 md:translate-y-8 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100"
                   >
                     Añadir a Bolsa
                   </button>
@@ -721,6 +732,29 @@ export default function App() {
       <PrivacyModal isOpen={showPrivacyApp} onClose={() => setShowPrivacyApp(false)} />
       <RefundModal isOpen={showRefundApp} onClose={() => setShowRefundApp(false)} />
       <ComplaintsBookModal isOpen={showComplaintsApp} onClose={() => setShowComplaintsApp(false)} />
+
+      {/* Floating Toast Notification */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="fixed bottom-6 left-6 right-6 sm:left-auto sm:right-6 sm:w-auto max-w-sm z-[1200] bg-[#5a3c3c] text-white py-4 px-6 rounded-2xl shadow-2xl flex items-center justify-between gap-4 border border-white/10 font-sans text-xs uppercase tracking-wider font-semibold"
+          >
+            <div className="flex items-center gap-3">
+              <span className="w-2 h-2 rounded-full bg-[#81b896] animate-pulse flex-shrink-0"></span>
+              <span className="truncate">{toastMessage}</span>
+            </div>
+            <button 
+              onClick={() => setIsCartOpen(true)} 
+              className="bg-white/15 hover:bg-white/25 text-white text-[9px] uppercase tracking-widest font-bold py-1.5 px-3 rounded-full transition-all flex-shrink-0"
+            >
+              Ver Bolsa
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
