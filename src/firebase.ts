@@ -11,7 +11,8 @@ import {
   query, 
   orderBy, 
   limit,
-  serverTimestamp 
+  serverTimestamp,
+  runTransaction 
 } from "firebase/firestore";
 import firebaseConfig from "../firebase-applet-config.json";
 
@@ -42,7 +43,8 @@ export interface Order {
   total: number;
   date: string;
   timestamp: any;
-  status: "pending" | "paid" | "preparing" | "shipped" | "delivered" | "cancelled";
+  status: "pending" | "paid" | "preparing" | "shipped" | "delivered" | "cancelled" | "rejected";
+  rejectionReason?: string;
   simulated?: boolean;
 }
 
@@ -105,13 +107,17 @@ export async function saveOrderToFirestore(orderData: any) {
 }
 
 // Update the status of an order
-export async function updateOrderStatus(orderId: string, status: Order["status"]) {
+export async function updateOrderStatus(orderId: string, status: Order["status"], rejectionReason?: string) {
   try {
     const orderRef = doc(db, "orders", orderId);
-    await updateDoc(orderRef, {
+    const updates: any = {
       status,
       updatedAt: serverTimestamp()
-    });
+    };
+    if (rejectionReason !== undefined) {
+      updates.rejectionReason = rejectionReason;
+    }
+    await updateDoc(orderRef, updates);
     console.log(`[Firebase] Estado del pedido ${orderId} actualizado a: ${status}`);
     return { success: true };
   } catch (error) {
@@ -214,6 +220,78 @@ export async function deleteClaimFromFirestore(claimId: string) {
   } catch (error) {
     console.error("[Firebase] Error al eliminar el reclamo:", error);
     throw error;
+  }
+}
+
+// Update stock in Firestore
+export async function updateProductStock(productId: number, stock: number) {
+  try {
+    const stockRef = doc(db, "inventory", String(productId));
+    await setDoc(stockRef, { stock }, { merge: true });
+    console.log(`[Firebase] Stock para producto ${productId} actualizado a: ${stock}`);
+    return { success: true };
+  } catch (error) {
+    console.error("[Firebase] Error al actualizar stock:", error);
+    throw error;
+  }
+}
+
+// Subscribe to inventory in real-time
+export function subscribeToInventory(onUpdate: (inventory: { [key: number]: number }) => void) {
+  const inventoryCollection = collection(db, "inventory");
+  
+  return onSnapshot(inventoryCollection, (snapshot) => {
+    const stockMap: { [key: number]: number } = {};
+    snapshot.forEach((doc) => {
+      const id = Number(doc.id);
+      if (!isNaN(id)) {
+        stockMap[id] = doc.data().stock ?? 0;
+      }
+    });
+    onUpdate(stockMap);
+  }, (error) => {
+    console.error("[Firebase] Error al escuchar inventario en tiempo real:", error);
+  });
+}
+
+// Deduct stock for items in a completed order
+export async function deductOrderStock(orderId: string, items: any[]) {
+  try {
+    const orderRef = doc(db, "orders", orderId);
+    const orderDoc = await getDoc(orderRef);
+    
+    if (orderDoc.exists() && orderDoc.data().stockDeducted === true) {
+      console.log(`[Firebase] El stock para el pedido ${orderId} ya fue deducido previamente.`);
+      return { success: true };
+    }
+
+    console.log(`[Firebase] Deduciendo stock para los artículos del pedido ${orderId}...`);
+    for (const item of items) {
+      const productId = item.id;
+      const quantity = item.quantity;
+      const stockRef = doc(db, "inventory", String(productId));
+      
+      await runTransaction(db, async (transaction) => {
+        const stockDoc = await transaction.get(stockRef);
+        if (stockDoc.exists()) {
+          const currentStock = stockDoc.data().stock ?? 0;
+          const newStock = Math.max(0, currentStock - quantity);
+          transaction.update(stockRef, { stock: newStock });
+          console.log(`[Firebase] Stock de producto ${productId} actualizado de ${currentStock} a ${newStock}`);
+        } else {
+          const defaultStart = 10;
+          const newStock = Math.max(0, defaultStart - quantity);
+          transaction.set(stockRef, { stock: newStock });
+          console.log(`[Firebase] No se encontró doc de stock para ${productId}. Iniciado con ${defaultStart} y reducido a ${newStock}`);
+        }
+      });
+    }
+
+    await updateDoc(orderRef, { stockDeducted: true });
+    console.log(`[Firebase] Pedido ${orderId} marcado como stockDeducted: true.`);
+    return { success: true };
+  } catch (error) {
+    console.error("[Firebase] Error al deducir stock para el pedido:", error);
   }
 }
 

@@ -5,6 +5,7 @@ export interface Plant {
   price: number;
   image: string;
   desc: string;
+  stock?: number;
 }
 
 export interface CartItem extends Plant {

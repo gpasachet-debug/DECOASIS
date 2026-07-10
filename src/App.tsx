@@ -24,7 +24,7 @@ import CheckoutPortal from "./components/CheckoutPortal";
 import OrderSuccessPortal from "./components/OrderSuccessPortal";
 import AdminDashboard from "./components/AdminDashboard";
 import { TermsModal, PrivacyModal, RefundModal, ComplaintsBookModal } from "./components/LegalDocs";
-import { saveOrderToFirestore } from "./firebase";
+import { saveOrderToFirestore, subscribeToInventory, deductOrderStock } from "./firebase";
 
 export default function App() {
   // State managers
@@ -39,6 +39,19 @@ export default function App() {
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [copyrightClicks, setCopyrightClicks] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [inventory, setInventory] = useState<{ [key: number]: number }>({});
+
+  // Subscribe to inventory in real-time
+  useEffect(() => {
+    const unsubscribe = subscribeToInventory((updatedInventory) => {
+      setInventory(updatedInventory);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const getPlantStock = (plantId: number): number => {
+    return inventory[plantId] !== undefined ? inventory[plantId] : 10;
+  };
 
   // Legal Modals state
   const [showTermsApp, setShowTermsApp] = useState(false);
@@ -99,9 +112,14 @@ export default function App() {
         setSuccessfulOrder(newOrder);
 
         // Guardar en Firestore de forma asíncrona para no bloquear
-        saveOrderToFirestore(newOrder).catch((err) => {
-          console.error("[Firebase] Error al guardar pedido desde redirección:", err);
-        });
+        saveOrderToFirestore(newOrder)
+          .then(() => {
+            deductOrderStock(newOrder.id, newOrder.items);
+          })
+          .catch((err) => {
+            console.error("[Firebase] Error al guardar pedido desde redirección:", err);
+            deductOrderStock(newOrder.id, newOrder.items);
+          });
 
         // Clear cart since order succeeded!
         setCart([]);
@@ -114,6 +132,20 @@ export default function App() {
 
   // Cart operations
   const addToCart = (plant: Plant) => {
+    const stock = getPlantStock(plant.id);
+    const existingInCart = cart.find(item => item.id === plant.id);
+    const currentQty = existingInCart ? existingInCart.quantity : 0;
+    
+    if (stock <= 0) {
+      setToastMessage(`¡Lo sentimos! ${plant.name} está agotado. 🌿`);
+      return;
+    }
+    
+    if (currentQty + 1 > stock) {
+      setToastMessage(`¡Solo quedan ${stock} unidades de ${plant.name} en stock! 🌿`);
+      return;
+    }
+
     setCart((prev) => {
       const exists = prev.find((item) => item.id === plant.id);
       if (exists) {
@@ -127,6 +159,15 @@ export default function App() {
   };
 
   const updateQuantity = (id: number, amount: number) => {
+    const stock = getPlantStock(id);
+    const item = cart.find(i => i.id === id);
+    if (!item) return;
+
+    if (amount > 0 && item.quantity + amount > stock) {
+      setToastMessage(`¡Solo quedan ${stock} unidades disponibles! 🌿`);
+      return;
+    }
+
     setCart((prev) => 
       prev.map((item) => {
         if (item.id === id) {
@@ -161,9 +202,19 @@ export default function App() {
     setSuccessfulOrder(orderDetails);
     
     // Guardar en Firestore de forma asíncrona para no bloquear al cliente
-    saveOrderToFirestore(orderDetails).catch((err) => {
-      console.error("[Firebase] Error al guardar el pedido en Firestore:", err);
-    });
+    saveOrderToFirestore(orderDetails)
+      .then(() => {
+        // Solo reducir stock de inmediato si el método de pago es culqi o si el estado es pagado
+        if (orderDetails.paymentMethod === "culqi" || orderDetails.status === "paid") {
+          deductOrderStock(orderDetails.id, orderDetails.items);
+        }
+      })
+      .catch((err) => {
+        console.error("[Firebase] Error al guardar el pedido en Firestore:", err);
+        if (orderDetails.paymentMethod === "culqi" || orderDetails.status === "paid") {
+          deductOrderStock(orderDetails.id, orderDetails.items);
+        }
+      });
 
     // Automatically send confirmation email to the customer if payment method is culqi
     if (orderDetails.paymentMethod === "culqi") {
@@ -352,44 +403,62 @@ export default function App() {
         {/* Plant Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-20">
           <AnimatePresence mode="popLayout">
-            {filteredPlants.map((plant, idx) => (
-              <motion.div 
-                layout
-                key={plant.id}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.5, delay: idx * 0.05 }}
-                className="group flex flex-col text-left"
-              >
-                <div className="relative aspect-[4/5] overflow-hidden rounded-[3rem] bg-[#fdfcf8] mb-8 shadow-sm border border-[#5a3c3c]/5">
-                  <img 
-                    src={plant.image} 
-                    className="w-full h-full object-cover transition-transform duration-[2s] ease-out group-hover:scale-105" 
-                    alt={plant.name}
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-colors duration-700"></div>
-                  
-                  {/* Hover Add to Bag button */}
-                  <button 
-                    onClick={() => addToCart(plant)}
-                    className="absolute bottom-8 left-8 right-8 bg-[#fdfcf8]/95 backdrop-blur-md py-5 rounded-full shadow-xl font-sans font-bold text-[9px] tracking-[0.3em] uppercase text-[#5a3c3c] hover:text-[#81b896] cursor-pointer transition-all duration-500 translate-y-0 opacity-100 md:translate-y-8 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100"
-                  >
-                    Añadir a Bolsa
-                  </button>
-                </div>
-                
-                <div className="flex justify-between items-start px-4">
-                  <div>
-                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#81b896] font-bold mb-2 block">{plant.category}</span>
-                    <h3 className="text-2xl font-serif text-[#5a3c3c] italic leading-tight">{plant.name}</h3>
-                    <p className="text-xs text-[#5a3c3c]/60 mt-3 font-light max-w-[240px] leading-relaxed">{plant.desc}</p>
+            {filteredPlants.map((plant, idx) => {
+              const stock = getPlantStock(plant.id);
+              const isAgotado = stock <= 0;
+              return (
+                <motion.div 
+                  layout
+                  key={plant.id}
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.5, delay: idx * 0.05 }}
+                  className="group flex flex-col text-left"
+                >
+                  <div className="relative aspect-[4/5] overflow-hidden rounded-[3rem] bg-[#fdfcf8] mb-8 shadow-sm border border-[#5a3c3c]/5">
+                    <img 
+                      src={plant.image} 
+                      className={`w-full h-full object-cover transition-transform duration-[2s] ease-out group-hover:scale-105 ${isAgotado ? "grayscale opacity-75" : ""}`} 
+                      alt={plant.name}
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-colors duration-700"></div>
+                    
+                    {/* Agotado Badge overlay */}
+                    {isAgotado && (
+                      <div className="absolute top-6 left-6 bg-[#e06666] text-white text-[9px] font-sans font-bold uppercase tracking-[0.2em] px-4 py-2 rounded-full shadow-md z-10">
+                        Agotado
+                      </div>
+                    )}
+                    
+                    {/* Hover Add to Bag button */}
+                    <button 
+                      onClick={() => !isAgotado && addToCart(plant)}
+                      disabled={isAgotado}
+                      className={`absolute bottom-8 left-8 right-8 py-5 rounded-full shadow-xl font-sans font-bold text-[9px] tracking-[0.3em] uppercase transition-all duration-500 translate-y-0 opacity-100 md:translate-y-8 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 ${
+                        isAgotado 
+                          ? "bg-gray-200/90 text-gray-400 cursor-not-allowed" 
+                          : "bg-[#fdfcf8]/95 backdrop-blur-md text-[#5a3c3c] hover:text-[#81b896] cursor-pointer"
+                      }`}
+                    >
+                      {isAgotado ? "Agotado" : "Añadir a Bolsa"}
+                    </button>
                   </div>
-                  <span className="font-serif text-xl text-[#5a3c3c] mt-1 font-semibold whitespace-nowrap">S/ {plant.price.toFixed(2)}</span>
-                </div>
-              </motion.div>
-            ))}
+                  
+                  <div className="flex justify-between items-start px-4">
+                    <div>
+                      <span className="text-[10px] uppercase tracking-[0.4em] text-[#81b896] font-bold mb-2 block">{plant.category}</span>
+                      <h3 className="text-2xl font-serif text-[#5a3c3c] italic leading-tight">{plant.name}</h3>
+                      <p className="text-xs text-[#5a3c3c]/60 mt-3 font-light max-w-[240px] leading-relaxed">{plant.desc}</p>
+                    </div>
+                    <div className="text-right flex flex-col items-end">
+                      <span className="font-serif text-xl text-[#5a3c3c] mt-1 font-semibold whitespace-nowrap">S/ {plant.price.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
           </AnimatePresence>
         </div>
       </section>

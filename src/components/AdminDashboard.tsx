@@ -33,9 +33,13 @@ import {
   subscribeToClaims, 
   updateClaimStatus, 
   deleteClaimFromFirestore, 
+  subscribeToInventory,
+  updateProductStock,
+  deductOrderStock,
   Order, 
   Claim 
 } from "../firebase";
+import { PLANTS } from "../data";
 
 interface AdminDashboardProps {
   onClose: () => void;
@@ -49,7 +53,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const [authError, setAuthError] = useState<string | null>(null);
   
   // Tab control
-  const [activeTab, setActiveTab] = useState<"orders" | "claims">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "claims" | "inventory">("orders");
 
   // Orders State
   const [orders, setOrders] = useState<Order[]>([]);
@@ -61,6 +65,8 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showScreenshotModal, setShowScreenshotModal] = useState<string | null>(null);
+  const [rejectingOrder, setRejectingOrder] = useState<Order | null>(null);
+  const [rejectionReasonInput, setRejectionReasonInput] = useState("");
 
   // Claims State
   const [claims, setClaims] = useState<Claim[]>([]);
@@ -71,7 +77,25 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const [confirmDeleteClaimId, setConfirmDeleteClaimId] = useState<string | null>(null);
   const [isUpdatingClaim, setIsUpdatingClaim] = useState(false);
 
-  // Subscribe to real-time orders and claims on mount if authenticated
+  // Inventory State
+  const [inventory, setInventory] = useState<{ [key: number]: number }>({});
+  const [isUpdatingStock, setIsUpdatingStock] = useState<{ [key: number]: boolean }>({});
+  const [inventorySearch, setInventorySearch] = useState("");
+  const [stockInputs, setStockInputs] = useState<{ [key: number]: string }>({});
+
+  // Synchronize Firestore inventory changes into local inputs
+  useEffect(() => {
+    setStockInputs(prev => {
+      const updated = { ...prev };
+      PLANTS.forEach(p => {
+        const currentVal = inventory[p.id] !== undefined ? inventory[p.id] : 10;
+        updated[p.id] = String(currentVal);
+      });
+      return updated;
+    });
+  }, [inventory]);
+
+  // Subscribe to real-time orders, claims and inventory on mount if authenticated
   useEffect(() => {
     if (!isAuthenticated) return;
     
@@ -84,10 +108,16 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     const unsubscribeClaims = subscribeToClaims((updatedClaims) => {
       setClaims(updatedClaims);
     });
+
+    console.log("[Admin] Suscribiéndose a inventario en Firestore...");
+    const unsubscribeInventory = subscribeToInventory((updatedInventory) => {
+      setInventory(updatedInventory);
+    });
     
     return () => {
       unsubscribeOrders();
       unsubscribeClaims();
+      unsubscribeInventory();
     };
   }, [isAuthenticated]);
 
@@ -108,6 +138,27 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     onClose();
   };
 
+  const handleUpdateStock = async (plantId: number, newStock: number) => {
+    if (newStock < 0) return;
+    setIsUpdatingStock(prev => ({ ...prev, [plantId]: true }));
+    
+    // Optimistically update local states immediately
+    setInventory(prev => ({ ...prev, [plantId]: newStock }));
+    setStockInputs(prev => ({ ...prev, [plantId]: String(newStock) }));
+    
+    try {
+      await updateProductStock(plantId, newStock);
+    } catch (err) {
+      console.error("Error al actualizar stock de planta:", err);
+      // Revert on failure
+      const originalStock = inventory[plantId] !== undefined ? inventory[plantId] : 10;
+      setInventory(prev => ({ ...prev, [plantId]: originalStock }));
+      setStockInputs(prev => ({ ...prev, [plantId]: String(originalStock) }));
+    } finally {
+      setIsUpdatingStock(prev => ({ ...prev, [plantId]: false }));
+    }
+  };
+
   const handleCopyId = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(id);
@@ -115,38 +166,73 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleStatusChange = async (orderId: string, newStatus: Order["status"]) => {
+  const handleStatusChange = async (orderId: string, newStatus: Order["status"], rejectionReason?: string) => {
     setIsUpdating(true);
     try {
-      await updateOrderStatus(orderId, newStatus);
+      await updateOrderStatus(orderId, newStatus, rejectionReason);
       if (selectedOrder && selectedOrder.id === orderId) {
-        setSelectedOrder(prev => prev ? { ...prev, status: newStatus } : null);
+        setSelectedOrder(prev => prev ? { ...prev, status: newStatus, rejectionReason } : null);
       }
 
       // Automatically send confirmation email to the customer if status changed to PAID
       if (newStatus === "paid") {
         const orderObj = orders.find(o => o.id === orderId);
-        if (orderObj && orderObj.customerInfo?.email) {
-          console.log(`[Admin] Solicitando envío de correo de pago confirmado para el pedido ${orderId} a ${orderObj.customerInfo.email}...`);
-          fetch("/api/send-paid-email", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              orderId: orderObj.id,
-              total: orderObj.total,
-              items: orderObj.items,
-              customerInfo: orderObj.customerInfo,
-            }),
-          })
-            .then(res => res.json())
-            .then(data => {
-              console.log("[Admin] Correo de confirmación de pago procesado:", data);
+        if (orderObj) {
+          // Deduct stock if not already done
+          await deductOrderStock(orderId, orderObj.items);
+
+          if (orderObj.customerInfo?.email) {
+            console.log(`[Admin] Solicitando envío de correo de pago confirmado para el pedido ${orderId} a ${orderObj.customerInfo.email}...`);
+            fetch("/api/send-paid-email", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                orderId: orderObj.id,
+                total: orderObj.total,
+                items: orderObj.items,
+                customerInfo: orderObj.customerInfo,
+              }),
             })
-            .catch(err => {
-              console.error("[Admin] Error al llamar a la API de correo de confirmación:", err);
-            });
+              .then(res => res.json())
+              .then(data => {
+                console.log("[Admin] Correo de confirmación de pago procesado:", data);
+              })
+              .catch(err => {
+                console.error("[Admin] Error al llamar a la API de correo de confirmación:", err);
+              });
+          }
+        }
+      }
+
+      // Automatically send rejection email to the customer if status changed to REJECTED
+      if (newStatus === "rejected" && rejectionReason) {
+        const orderObj = orders.find(o => o.id === orderId);
+        if (orderObj) {
+          if (orderObj.customerInfo?.email) {
+            console.log(`[Admin] Solicitando envío de correo de rechazo para el pedido ${orderId} a ${orderObj.customerInfo.email}...`);
+            fetch("/api/send-rejected-email", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                orderId: orderObj.id,
+                total: orderObj.total,
+                items: orderObj.items,
+                customerInfo: orderObj.customerInfo,
+                rejectionReason: rejectionReason,
+              }),
+            })
+              .then(res => res.json())
+              .then(data => {
+                console.log("[Admin] Correo de rechazo de pedido procesado:", data);
+              })
+              .catch(err => {
+                console.error("[Admin] Error al llamar a la API de correo de rechazo:", err);
+              });
+          }
         }
       }
     } catch (err) {
@@ -210,7 +296,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     return matchesSearch && matchesType && matchesStatus;
   });
 
-  // Filter orders based on queries
+  // Filter and sort orders based on queries (most recent to oldest)
   const filteredOrders = orders.filter((order) => {
     const matchesSearch = 
       (order.id || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -222,6 +308,62 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     const matchesDelivery = deliveryFilter === "all" || order.customerInfo?.deliveryType === deliveryFilter;
     
     return matchesSearch && matchesStatus && matchesDelivery;
+  }).sort((a, b) => {
+    const getOrderTime = (order: Order): number => {
+      if (order.timestamp) {
+        if (typeof order.timestamp.toMillis === "function") {
+          return order.timestamp.toMillis();
+        }
+        if (order.timestamp.seconds) {
+          return order.timestamp.seconds * 1000;
+        }
+        if (order.timestamp instanceof Date) {
+          return order.timestamp.getTime();
+        }
+        if (typeof order.timestamp === "number") {
+          return order.timestamp;
+        }
+        const tDate = new Date(order.timestamp);
+        if (!isNaN(tDate.getTime())) {
+          return tDate.getTime();
+        }
+      }
+      
+      if (order.date) {
+        try {
+          const parts = order.date.match(/(\d+)\/(\d+)\/(\d+)(?:\s+(\d+):(\d+)\s*(a\.\s*m\.|p\.\s*m\.|am|pm)?)?/i);
+          if (parts) {
+            const day = parseInt(parts[1], 10);
+            const month = parseInt(parts[2], 10) - 1;
+            const year = parseInt(parts[3], 10);
+            let hour = parts[4] ? parseInt(parts[4], 10) : 0;
+            const minute = parts[5] ? parseInt(parts[5], 10) : 0;
+            const ampm = parts[6] ? parts[6].toLowerCase().replace(/\s/g, "") : "";
+            
+            if (ampm === "pm" || ampm === "p.m.") {
+              if (hour < 12) hour += 12;
+            } else if (ampm === "am" || ampm === "a.m.") {
+              if (hour === 12) hour = 0;
+            }
+            
+            const d = new Date(year, month, day, hour, minute);
+            if (!isNaN(d.getTime())) {
+              return d.getTime();
+            }
+          }
+        } catch (e) {
+          console.warn("Error parsing date:", order.date, e);
+        }
+        
+        const parsed = Date.parse(order.date);
+        if (!isNaN(parsed)) {
+          return parsed;
+        }
+      }
+      return 0;
+    };
+
+    return getOrderTime(b) - getOrderTime(a);
   });
 
   // Calculate statistics
@@ -250,6 +392,8 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
         return { label: "Entregado", bg: "bg-teal-100 text-teal-800 border-teal-200" };
       case "cancelled":
         return { label: "Cancelado", bg: "bg-rose-100 text-rose-800 border-rose-200" };
+      case "rejected":
+        return { label: "Rechazado", bg: "bg-red-100 text-red-800 border-red-200" };
       default:
         return { label: "Desconocido", bg: "bg-gray-100 text-gray-800 border-gray-200" };
     }
@@ -347,9 +491,9 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
             </button>
             <div>
               <div className="flex items-center gap-2">
-                <span className={`w-2.5 h-2.5 rounded-full animate-pulse ${activeTab === "orders" ? "bg-emerald-500" : "bg-purple-500"}`}></span>
+                <span className={`w-2.5 h-2.5 rounded-full animate-pulse ${activeTab === "orders" ? "bg-emerald-500" : activeTab === "claims" ? "bg-purple-500" : "bg-amber-500"}`}></span>
                 <h1 className="text-xl font-serif italic text-[#5a3c3c] font-semibold">
-                  {activeTab === "orders" ? "Bandeja de Pedidos" : "Libro de Reclamaciones"}
+                  {activeTab === "orders" ? "Bandeja de Pedidos" : activeTab === "claims" ? "Libro de Reclamaciones" : "Control de Stock e Inventario"}
                 </h1>
               </div>
               <p className="text-[10px] uppercase tracking-widest text-[#5a3c3c]/60 mt-0.5">Decoasis Perú — Panel de Operaciones</p>
@@ -397,6 +541,16 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                 {claims.filter(c => c.status === "pendiente").length}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setActiveTab("inventory")}
+            className={`py-3 px-6 font-serif italic text-sm transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              activeTab === "inventory" 
+                ? "border-[#5a3c3c] text-[#5a3c3c] font-bold" 
+                : "border-transparent text-[#5a3c3c]/50 hover:text-[#5a3c3c]"
+            }`}
+          >
+            <Package className="w-4 h-4" /> Control de Stock ({PLANTS.length})
           </button>
         </div>
 
@@ -481,6 +635,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                   <option value="shipped">Enviados (En Ruta)</option>
                   <option value="delivered">Entregados</option>
                   <option value="cancelled">Cancelados</option>
+                  <option value="rejected">Rechazados</option>
                 </select>
               </div>
 
@@ -634,7 +789,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
           )}
         </div>
         </>
-        ) : (
+        ) : activeTab === "claims" ? (
           <>
             {/* Claims Statistics Cards Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -838,6 +993,186 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
               )}
             </div>
           </>
+        ) : (
+          <>
+            {/* Inventory Management Panel */}
+            <div className="bg-white p-6 rounded-3xl border border-[#5a3c3c]/5 shadow-sm space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 text-left">
+                <div>
+                  <h3 className="text-xl font-serif italic text-[#5a3c3c] font-bold">Control de Inventario y Stock</h3>
+                  <p className="text-xs text-gray-500 mt-1">Modifica la cantidad disponible de cada planta en tiempo real. Cuando el stock llegue a 0, aparecerá automáticamente como "agotado" para los clientes.</p>
+                </div>
+                
+                {/* Search field */}
+                <div className="relative w-full md:max-w-xs">
+                  <Search className="w-4 h-4 text-[#5a3c3c]/40 absolute left-4 top-1/2 -translate-y-1/2" />
+                  <input 
+                    type="text"
+                    value={inventorySearch}
+                    onChange={(e) => setInventorySearch(e.target.value)}
+                    placeholder="Buscar planta..."
+                    className="w-full bg-[#5a3c3c]/5 border border-[#5a3c3c]/10 rounded-2xl pl-11 pr-5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#81b896] focus:bg-white transition-all text-[#5a3c3c]"
+                  />
+                </div>
+              </div>
+
+              {/* Statistics for Inventory */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <div className="bg-[#5a3c3c]/5 p-5 rounded-2xl border border-[#5a3c3c]/10 text-left">
+                  <p className="text-[10px] uppercase tracking-widest text-[#5a3c3c]/60 font-bold">Total Productos</p>
+                  <h4 className="text-2xl font-serif font-bold text-[#5a3c3c] mt-1">{PLANTS.length}</h4>
+                </div>
+                <div className="bg-[#f2a8a4]/10 p-5 rounded-2xl border border-[#f2a8a4]/20 text-left">
+                  <p className="text-[10px] uppercase tracking-widest text-[#f2a8a4] font-bold">Productos Agotados</p>
+                  <h4 className="text-2xl font-serif font-bold text-red-600 mt-1">
+                    {PLANTS.filter(p => (inventory[p.id] ?? 10) === 0).length}
+                  </h4>
+                </div>
+                <div className="bg-[#81b896]/10 p-5 rounded-2xl border border-[#81b896]/20 text-left">
+                  <p className="text-[10px] uppercase tracking-widest text-[#81b896] font-bold">Stock Bajo (&le; 3)</p>
+                  <h4 className="text-2xl font-serif font-bold text-amber-600 mt-1">
+                    {PLANTS.filter(p => {
+                      const st = inventory[p.id] ?? 10;
+                      return st > 0 && st <= 3;
+                    }).length}
+                  </h4>
+                </div>
+              </div>
+
+              {/* Products Inventory Grid / List */}
+              <div className="overflow-hidden rounded-2xl border border-[#5a3c3c]/10 bg-white">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-[#5a3c3c]/5 border-b border-[#5a3c3c]/10 text-[10px] uppercase tracking-widest text-[#5a3c3c]/60 font-bold text-left">
+                        <th className="px-6 py-4">Planta</th>
+                        <th className="px-6 py-4">Categoría</th>
+                        <th className="px-6 py-4">Precio</th>
+                        <th className="px-6 py-4 text-center">Estado de Stock</th>
+                        <th className="px-6 py-4 text-center">Control de Stock</th>
+                        <th className="px-6 py-4 text-right">Accesos Rápidos</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-xs text-left">
+                      {PLANTS.filter(p => p.name.toLowerCase().includes(inventorySearch.toLowerCase()))
+                        .map((plant) => {
+                          const currentStock = inventory[plant.id] !== undefined ? inventory[plant.id] : 10;
+                          const isAgotado = currentStock <= 0;
+                          const isLowStock = currentStock > 0 && currentStock <= 3;
+                          const loading = isUpdatingStock[plant.id] || false;
+
+                          return (
+                            <tr key={plant.id} className="hover:bg-gray-50/50 transition-colors">
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-3">
+                                  <img 
+                                    src={plant.image} 
+                                    alt={plant.name} 
+                                    className="w-10 h-12 object-cover rounded-xl shadow-sm border border-gray-100"
+                                  />
+                                  <div>
+                                    <div className="font-bold text-gray-900">{plant.name}</div>
+                                    <div className="text-[10px] text-gray-400 mt-0.5">ID: {plant.id}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 capitalize font-semibold text-gray-500">
+                                {plant.category}
+                              </td>
+                              <td className="px-6 py-4 font-serif font-bold text-gray-900">
+                                S/ {plant.price.toFixed(2)}
+                              </td>
+                              <td className="px-6 py-4 text-center">
+                                {isAgotado ? (
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100 uppercase tracking-wider">
+                                    Agotado
+                                  </span>
+                                ) : isLowStock ? (
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100 uppercase tracking-wider animate-pulse">
+                                    Stock Bajo ({currentStock})
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase tracking-wider">
+                                    Disponible
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="flex items-center justify-center gap-3">
+                                  <button
+                                    onClick={() => handleUpdateStock(plant.id, currentStock - 1)}
+                                    disabled={currentStock <= 0 || loading}
+                                    className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 hover:border-[#5a3c3c]/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all font-bold text-sm cursor-pointer"
+                                  >
+                                    -
+                                  </button>
+                                  
+                                  <input 
+                                    type="text"
+                                    value={stockInputs[plant.id] !== undefined ? stockInputs[plant.id] : String(currentStock)}
+                                    onChange={(e) => {
+                                      const valStr = e.target.value;
+                                      // Allow the user to type freely (including empty or temporary non-numbers)
+                                      setStockInputs(prev => ({ ...prev, [plant.id]: valStr }));
+                                    }}
+                                    onBlur={() => {
+                                      const val = parseInt(stockInputs[plant.id]);
+                                      if (!isNaN(val) && val >= 0) {
+                                        handleUpdateStock(plant.id, val);
+                                      } else {
+                                        // Reset to current stock if invalid
+                                        setStockInputs(prev => ({ ...prev, [plant.id]: String(currentStock) }));
+                                      }
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        const val = parseInt(stockInputs[plant.id]);
+                                        if (!isNaN(val) && val >= 0) {
+                                          handleUpdateStock(plant.id, val);
+                                          (e.target as HTMLInputElement).blur();
+                                        }
+                                      }
+                                    }}
+                                    disabled={loading}
+                                    className="w-14 text-center border border-gray-200 rounded-xl py-1 px-1 font-mono font-bold text-sm text-[#5a3c3c] focus:outline-none focus:ring-1 focus:ring-[#81b896]"
+                                  />
+
+                                  <button
+                                    onClick={() => handleUpdateStock(plant.id, currentStock + 1)}
+                                    disabled={loading}
+                                    className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 hover:border-[#5a3c3c]/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all font-bold text-sm cursor-pointer"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={() => handleUpdateStock(plant.id, 0)}
+                                    disabled={currentStock === 0 || loading}
+                                    className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                                  >
+                                    Agotar
+                                  </button>
+                                  <button
+                                    onClick={() => handleUpdateStock(plant.id, currentStock + 10)}
+                                    disabled={loading}
+                                    className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-[#81b896]/20 text-[#81b896] hover:bg-emerald-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                                  >
+                                    Reabastecer (+10)
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </main>
 
@@ -870,6 +1205,74 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                   className="w-1/2 bg-red-600 text-white font-bold uppercase tracking-wider text-[10px] py-4 rounded-full hover:bg-red-700 transition-colors shadow-md"
                 >
                   Confirmar Borrado
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Rejection Overlay Modal */}
+      <AnimatePresence>
+        {rejectingOrder && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2200] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl p-6 shadow-2xl max-w-md w-full border border-gray-100 text-left space-y-4"
+            >
+              <div className="flex items-center gap-3 border-b border-gray-100 pb-3">
+                <div className="w-10 h-10 bg-red-50 text-red-500 rounded-full flex items-center justify-center border border-red-100">
+                  <XCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-serif text-lg font-bold text-gray-900">Rechazar Pedido</h4>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold font-sans">ID: {rejectingOrder.id}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Por favor, ingresa el motivo del rechazo del pedido de <strong>{rejectingOrder.customerInfo?.name || "este cliente"}</strong>. Se guardará el motivo en Firestore y se enviará un correo automático notificando al cliente sobre el rechazo y el motivo especificado.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[10px] uppercase tracking-widest font-bold text-gray-400">Motivo del rechazo</label>
+                <textarea
+                  value={rejectionReasonInput}
+                  onChange={(e) => setRejectionReasonInput(e.target.value)}
+                  placeholder="Ej: No se pudo verificar la transferencia de pago. / La constancia cargada es inválida o ilegible."
+                  rows={4}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white transition-all text-gray-800 resize-none font-sans"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button 
+                  onClick={() => {
+                    setRejectingOrder(null);
+                    setRejectionReasonInput("");
+                  }}
+                  className="w-1/2 bg-gray-100 text-gray-700 font-bold uppercase tracking-wider text-[10px] py-4 rounded-full hover:bg-gray-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={async () => {
+                    if (!rejectionReasonInput.trim()) {
+                      alert("Por favor ingresa un motivo de rechazo.");
+                      return;
+                    }
+                    const reason = rejectionReasonInput.trim();
+                    setRejectingOrder(null);
+                    setRejectionReasonInput("");
+                    await handleStatusChange(rejectingOrder.id, "rejected", reason);
+                  }}
+                  className="w-1/2 bg-red-600 text-white font-bold uppercase tracking-wider text-[10px] py-4 rounded-full hover:bg-red-700 transition-colors shadow-md"
+                >
+                  Rechazar Pedido
                 </button>
               </div>
             </motion.div>
@@ -985,8 +1388,26 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                     >
                       Cancelado
                     </button>
+                    <button 
+                      onClick={() => {
+                        setRejectingOrder(selectedOrder);
+                        setRejectionReasonInput("");
+                      }}
+                      disabled={isUpdating}
+                      className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${selectedOrder.status === "rejected" ? "bg-red-600 text-white border-red-600 shadow-sm" : "bg-white hover:bg-red-50 text-red-700 border-red-200"}`}
+                    >
+                      Rechazado
+                    </button>
                   </div>
                 </div>
+
+                {/* Rejection Reason Card */}
+                {selectedOrder.status === "rejected" && selectedOrder.rejectionReason && (
+                  <div className="bg-rose-50 p-5 rounded-2xl border border-rose-100 shadow-sm space-y-2">
+                    <label className="block text-[10px] uppercase tracking-widest font-bold text-rose-600">Motivo de Rechazo del Pedido</label>
+                    <p className="font-serif italic text-sm text-rose-950 font-semibold">"{selectedOrder.rejectionReason}"</p>
+                  </div>
+                )}
 
                 {/* Customer info card */}
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">

@@ -411,6 +411,95 @@ async function sendPaidConfirmationEmail(orderId: string, total: number, items: 
 }
 
 
+// Helper function to send rejection email directly to the customer when payment is rejected (rejected)
+async function sendRejectedConfirmationEmail(orderId: string, total: number, items: any[], customerInfo: any, rejectionReason: string) {
+  const emailUser = process.env.EMAIL_USER || "gpasachet@gmail.com";
+  const emailPass = process.env.EMAIL_PASS;
+
+  console.log(`[Email] Preparando correo de rechazo de pedido para el cliente ${customerInfo.email} del pedido ${orderId}...`);
+
+  const itemsHtml = items.map(item => `
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 10px 0; font-family: sans-serif; font-size: 14px; color: #333;">${item.name}</td>
+      <td style="padding: 10px 0; text-align: center; font-family: sans-serif; font-size: 14px; color: #333;">${item.quantity}</td>
+      <td style="padding: 10px 0; text-align: right; font-family: sans-serif; font-size: 14px; color: #333; font-weight: bold;">S/ ${(item.price * item.quantity).toFixed(2)}</td>
+    </tr>
+  `).join("");
+
+  const htmlContent = `
+    <div style="background-color: #fcfbf7; padding: 40px 20px; font-family: 'Georgia', serif; color: #5a3c3c; line-height: 1.6;">
+      <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 24px; border: 1px solid rgba(90,60,60,0.1); box-shadow: 0 10px 30px rgba(90,60,60,0.05); overflow: hidden;">
+        <!-- Header -->
+        <div style="background-color: #e11d48; padding: 40px; text-align: center;">
+          <h1 style="color: #ffffff; font-size: 28px; margin: 0; font-weight: normal; font-style: italic; font-family: 'Georgia', serif;">Decoasis Perú</h1>
+          <p style="color: rgba(255,255,255,0.8); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; margin: 10px 0 0 0; font-family: sans-serif;">PEDIDO RECHAZADO</p>
+        </div>
+        
+        <!-- Content -->
+        <div style="padding: 40px;">
+          <p style="font-size: 18px; font-weight: bold; margin-top: 0; color: #e11d48; font-family: 'Georgia', serif;">Estimado(a) ${customerInfo.name || "Cliente"},</p>
+          <p style="font-size: 15px; font-family: 'Georgia', serif; color: #5a3c3c; line-height: 1.7;">
+            Te informamos que tu pedido con código <strong>${orderId}</strong> ha sido <strong>RECHAZADO</strong> tras auditar los datos de pago/transferencia provistos.
+          </p>
+          
+          <!-- Rejection Reason Badge -->
+          <div style="background-color: #fff1f2; border-left: 4px solid #e11d48; padding: 15px 20px; border-radius: 4px 12px 12px 4px; margin: 25px 0;">
+            <span style="font-family: sans-serif; font-size: 11px; color: #e11d48; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; display: block; margin-bottom: 5px;">Motivo del Rechazo:</span>
+            <p style="font-family: 'Georgia', serif; font-size: 15px; font-weight: bold; color: #9f1239; margin: 0; font-style: italic;">
+              "${rejectionReason}"
+            </p>
+          </div>
+
+          <p style="font-size: 14px; font-family: 'Georgia', serif; color: #5a3c3c; line-height: 1.7;">
+            Si crees que esto ha sido un error o deseas volver a coordinar tu compra, por favor comunícate directamente con nuestro local para ayudarte a resolverlo a la brevedad.
+          </p>
+          
+          <!-- Products Table -->
+          <h3 style="font-family: 'Georgia', serif; font-style: italic; border-bottom: 2px solid rgba(90,60,60,0.1); padding-bottom: 8px; margin-top: 30px; font-size: 18px; color: #5a3c3c;">Artículos en tu Pedido</h3>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+            <thead>
+              <tr style="border-bottom: 2px solid #eee;">
+                <th style="text-align: left; padding: 10px 0; font-family: sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: rgba(90,60,60,0.6);">Producto</th>
+                <th style="text-align: center; padding: 10px 0; font-family: sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: rgba(90,60,60,0.6); width: 60px;">Cant</th>
+                <th style="text-align: right; padding: 10px 0; font-family: sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: rgba(90,60,60,0.6); width: 100px;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+  
+          <!-- Totals -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 35px; background-color: rgba(90,60,60,0.03); border-radius: 12px; padding: 15px;">
+            <tr style="border-top: 1px dashed rgba(90,60,60,0.15);">
+              <td style="padding: 15px 15px; font-family: sans-serif; font-size: 14px; font-weight: bold; color: #5a3c3c;">Total del Pedido:</td>
+              <td style="padding: 15px 15px; text-align: right; font-family: sans-serif; font-size: 18px; font-weight: bold; color: #5a3c3c;">S/ ${total.toFixed(2)}</td>
+            </tr>
+          </table>
+        </div>
+        
+        <!-- Footer -->
+        <div style="background-color: #5a3c3c; padding: 25px; text-align: center; font-family: sans-serif; font-size: 11px; color: rgba(255,255,255,0.7); line-height: 1.5;">
+          Decoasis Perú. Cultivando amor, tranquilidad y vida en tu hogar. 🌿✨<br />
+          Para cualquier consulta o aclaración inmediata, puedes responder a este correo o <a href="https://wa.me/51933836011" target="_blank" style="color: #81b896; text-decoration: underline; font-weight: bold;">escribirnos por WhatsApp</a>.
+        </div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const result = await sendUnifiedEmail({
+      to: customerInfo.email,
+      subject: `🌿 Notificación sobre tu pedido en Decoasis Perú [Rechazado: ${orderId}]`,
+      html: htmlContent,
+    });
+    return result;
+  } catch (err: any) {
+    return { sent: false, simulated: false, error: err.message };
+  }
+}
+
+
 // API endpoint to send confirmation email when status is set to paid (PAGADO) from Dashboard
 app.post("/api/send-paid-email", async (req, res) => {
   try {
@@ -431,6 +520,30 @@ app.post("/api/send-paid-email", async (req, res) => {
   } catch (error: any) {
     console.error("Error al enviar el correo de confirmación de pago:", error);
     return res.status(500).json({ error: error.message || "Error interno al enviar el correo de confirmación de pago." });
+  }
+});
+
+
+// API endpoint to send rejection email when status is set to rejected (RECHAZADO) from Dashboard
+app.post("/api/send-rejected-email", async (req, res) => {
+  try {
+    const { orderId, total, items, customerInfo, rejectionReason } = req.body;
+
+    if (!orderId || !customerInfo || !customerInfo.email || !rejectionReason) {
+      return res.status(400).json({ error: "Datos del pedido, correo del cliente o motivo de rechazo faltantes." });
+    }
+
+    console.log(`[API] Solicitud para enviar correo de rechazo del pedido ${orderId}...`);
+    const result = await sendRejectedConfirmationEmail(orderId, total, items, customerInfo, rejectionReason);
+
+    return res.json({
+      success: true,
+      simulated: result.simulated,
+      message: "Correo de rechazo de pedido procesado correctamente."
+    });
+  } catch (error: any) {
+    console.error("Error al enviar el correo de rechazo:", error);
+    return res.status(500).json({ error: error.message || "Error interno al enviar el correo de rechazo." });
   }
 });
 

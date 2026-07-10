@@ -45,6 +45,15 @@
         "status": { "type": "string" }
       },
       "required": ["id", "name", "dni", "phone", "email", "address", "isMinor", "itemType", "itemDescription", "claimType", "claimDetails", "claimRequest", "status"]
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Stock inventory level for a product",
+      "type": "object",
+      "properties": {
+        "stock": { "type": "number" }
+      },
+      "required": ["stock"]
     }
   },
   "firestore": {
@@ -55,6 +64,10 @@
     "/claims/{claimId}": {
       "schema": "Claim",
       "description": "Complaints and claims received via virtual complaints book"
+    },
+    "/inventory/{productId}": {
+      "schema": "InventoryItem",
+      "description": "Stock level for each plant product"
     }
   }
 }

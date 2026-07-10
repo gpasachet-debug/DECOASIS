@@ -6,5 +6,6 @@
   "firestoreDatabaseId": "ai-studio-decoasisper-c0d74ecb-3c36-4bb3-873d-2d645d1c2a66",
   "storageBucket": "tidal-builder-kb2z8.firebasestorage.app",
   "messagingSenderId": "611433992839",
-  "measurementId": ""
+  "measurementId": "",
+  "oAuthClientId": "611433992839-6l3lgll9ao9ek9olb03n23hahe30va10.apps.googleusercontent.com"
 }
